@@ -8,6 +8,7 @@ import json
 import os
 import re
 from email.header import decode_header
+from html.parser import HTMLParser
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -22,6 +23,19 @@ ROOT_DIR = Path(__file__).parent.parent
 MOCK_PATH = ROOT_DIR / "mock_data" / "emails.json"
 CREDENTIALS_PATH = ROOT_DIR / "credentials.json"
 TOKEN_PATH = ROOT_DIR / "token.json"
+
+
+class _HTMLTextExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.parts: list[str] = []
+
+    def handle_data(self, data: str) -> None:
+        if data:
+            self.parts.append(data)
+
+    def get_text(self) -> str:
+        return " ".join(self.parts)
 
 
 def _use_mock() -> bool:
@@ -94,6 +108,32 @@ def _extract_text_plain(payload: dict | None) -> str:
     return ""
 
 
+def _extract_text_html(payload: dict | None) -> str:
+    if not payload:
+        return ""
+
+    mime_type = payload.get("mimeType", "")
+    body_data = payload.get("body", {}).get("data")
+    filename = payload.get("filename")
+
+    if mime_type == "text/html" and body_data and not filename:
+        parser = _HTMLTextExtractor()
+        parser.feed(_decode_body_data(body_data))
+        return parser.get_text()
+
+    for part in payload.get("parts", []):
+        text = _extract_text_html(part)
+        if text:
+            return text
+
+    if mime_type == "text/html" and body_data:
+        parser = _HTMLTextExtractor()
+        parser.feed(_decode_body_data(body_data))
+        return parser.get_text()
+
+    return ""
+
+
 def _get_header(headers: list[dict], name: str) -> str:
     for header in headers:
         if header.get("name", "").lower() == name.lower():
@@ -105,6 +145,8 @@ def _normalize_message(message: dict) -> dict:
     payload = message.get("payload", {})
     headers = payload.get("headers", [])
     body = _extract_text_plain(payload)
+    if not body:
+        body = _extract_text_html(payload)
     body = re.sub(r"\s+", " ", body).strip()
 
     return {
@@ -199,7 +241,17 @@ def fetch_unread_emails(service, max_results=10):
 
 
 if __name__ == "__main__":
+    import os
+    os.environ["USE_MOCK"] = "false"
+
     service = get_service()
     emails = fetch_recent_emails(service, max_results=5)
-    for email in emails:
-        print(f"{email['subject']} — {email['sender']}")
+
+    print(f"Fetched {len(emails)} emails:\n")
+    for e in emails:
+        print(f"  From: {e['sender']}")
+        print(f"  Subject: {e['subject']}")
+        print(f"  Date: {e['date']}")
+        print(f"  Snippet: {e['snippet'][:80]}...")
+        print(f"  Body length: {len(e['body'])} chars")
+        print()
