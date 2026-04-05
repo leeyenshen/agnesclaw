@@ -45,8 +45,7 @@ def run_sync():
     tx_count = 0
     for email in get_inbox():
         tx = parse_transaction_email(email)
-        if tx:
-            add_transaction(tx)
+        if tx and add_transaction(tx):
             tx_count += 1
     print(f"  Recorded {tx_count} transactions.")
 

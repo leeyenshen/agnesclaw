@@ -175,9 +175,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     transaction = parse_transaction_text(text)
     if transaction:
         from memory_manager import add_transaction
-        add_transaction(transaction)
+        added = add_transaction(transaction)
+        status = "Recorded" if added else "Already recorded"
         await update.message.reply_text(
-            f"Recorded: ${transaction['amount']:.2f} at {transaction['merchant']}"
+            f"{status}: ${transaction['amount']:.2f} at {transaction['merchant']}"
         )
         return
 

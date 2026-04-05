@@ -5,9 +5,11 @@ Optionally uses Agnes for a personalized summary.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from memory_manager import get_pending_tasks, get_food_deals, get_transactions
+from finance_tracker import get_weekly_transactions
+from time_utils import now_local, parse_iso_datetime
 
 
 URGENCY_EMOJI = {
@@ -29,21 +31,21 @@ def _format_due(due_str: str | None) -> str:
     """Format a due date into a human-readable string."""
     if not due_str:
         return "no deadline"
-    try:
-        due = datetime.fromisoformat(due_str.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        delta_hours = (due - now).total_seconds() / 3600
-
-        if delta_hours < 0:
-            return "OVERDUE"
-        elif delta_hours < 24:
-            return f"due TODAY {due.strftime('%I:%M %p')}"
-        elif delta_hours < 48:
-            return f"due TOMORROW {due.strftime('%I:%M %p')}"
-        else:
-            return f"due {due.strftime('%a %d %b')}"
-    except (ValueError, TypeError):
+    due = parse_iso_datetime(due_str)
+    if not due:
         return due_str
+
+    now = now_local()
+    due_local = due.astimezone(now.tzinfo)
+    delta_hours = (due_local - now).total_seconds() / 3600
+
+    if delta_hours < 0:
+        return "OVERDUE"
+    if delta_hours < 24:
+        return f"due TODAY {due_local.strftime('%I:%M %p')}"
+    if delta_hours < 48:
+        return f"due TOMORROW {due_local.strftime('%I:%M %p')}"
+    return f"due {due_local.strftime('%a %d %b')}"
 
 
 def build_digest() -> str:
@@ -52,7 +54,7 @@ def build_digest() -> str:
     deals = get_food_deals()
     transactions = get_transactions()
 
-    now = datetime.now(timezone.utc)
+    now = now_local()
     greeting = _get_greeting(now)
 
     lines = [f"{greeting}\n"]
@@ -86,8 +88,9 @@ def build_digest() -> str:
         lines.append("")
 
     # Spending summary
-    if transactions:
-        week_total = sum(t.get("amount", 0) for t in transactions)
+    weekly_transactions = get_weekly_transactions(transactions, now=now)
+    if weekly_transactions:
+        week_total = sum(t.get("amount", 0) for t in weekly_transactions)
         lines.append(f"\U0001f4ca SPENDING THIS WEEK: ${week_total:.2f}")
         lines.append("")
 
@@ -114,7 +117,7 @@ def build_task_list() -> str:
 
 def _get_greeting(now: datetime) -> str:
     """Time-appropriate greeting."""
-    hour = (now.hour + 8) % 24  # Rough SGT offset
+    hour = now.hour
     if hour < 12:
         return "\u2600\ufe0f Good morning! Here's your day:"
     elif hour < 17:
@@ -136,7 +139,7 @@ if __name__ == "__main__":
         {"title": "GEA1000 AI Ethics Essay", "course": "GEA1000", "due_date": "2026-04-18T15:59:00Z", "urgency": "later", "source": "canvas"},
     ])
     add_food_deals([
-        {"merchant": "Koufu (UTown)", "deal": "1-for-1 Chicken Cutlet", "valid_date": datetime.now(timezone.utc).strftime("%Y-%m-%d")},
+        {"merchant": "Koufu (UTown)", "deal": "1-for-1 Chicken Cutlet", "valid_date": now_local().strftime("%Y-%m-%d")},
     ])
     add_transaction({"merchant": "Al Amaan Express", "amount": 12.29, "date": "2026-04-04"})
 
