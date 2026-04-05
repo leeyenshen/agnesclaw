@@ -1,0 +1,54 @@
+[
+  {
+    "type": "submitting",
+    "assignment": {
+      "id": 204001,
+      "name": "Lab 5: Graphs & BFS",
+      "course_id": 2040,
+      "due_at": "2026-04-10T15:59:00Z",
+      "points_possible": 20,
+      "html_url": "https://canvas.nus.edu.sg/courses/2040/assignments/204001",
+      "submission_types": ["online_upload"]
+    },
+    "context_name": "CS2040S Data Structures and Algorithms"
+  },
+  {
+    "type": "submitting",
+    "assignment": {
+      "id": 200101,
+      "name": "Group Project: Linear Algebra Applications",
+      "course_id": 2001,
+      "due_at": "2026-04-11T09:00:00Z",
+      "points_possible": 30,
+      "html_url": "https://canvas.nus.edu.sg/courses/2001/assignments/200101",
+      "submission_types": ["online_upload"]
+    },
+    "context_name": "MA2001 Linear Algebra I"
+  },
+  {
+    "type": "submitting",
+    "assignment": {
+      "id": 210501,
+      "name": "Tutorial 8: Entity-Relationship Diagrams",
+      "course_id": 2105,
+      "due_at": "2026-04-08T15:59:00Z",
+      "points_possible": 5,
+      "html_url": "https://canvas.nus.edu.sg/courses/2105/assignments/210501",
+      "submission_types": ["online_text_entry"]
+    },
+    "context_name": "CS2105 Introduction to Computer Networks"
+  },
+  {
+    "type": "submitting",
+    "assignment": {
+      "id": 160101,
+      "name": "Essay: Ethical Implications of AI in Education",
+      "course_id": 1601,
+      "due_at": "2026-04-18T15:59:00Z",
+      "points_possible": 25,
+      "html_url": "https://canvas.nus.edu.sg/courses/1601/assignments/160101",
+      "submission_types": ["online_upload"]
+    },
+    "context_name": "GEA1000 Quantitative Reasoning"
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "zenmux/agnes-1.5-pro"
+      },
+      "workspace": "~/.openclaw/clawcampus"
+    }
+  },
+  "models": {
+    "providers": {
+      "zenmux": {
+        "baseUrl": "https://zenmux.ai/api/v1",
+        "apiKey": "${AGNES_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          { "id": "agnes-1.5-pro", "name": "Agnes 1.5 Pro" },
+          { "id": "agnes-1.5-lite", "name": "Agnes 1.5 Lite" }
+        ]
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "${TELEGRAM_BOT_TOKEN}"
+    }
+  },
+  "heartbeat": {
+    "schedule": "30 7 * * *",
+    "timezone": "Asia/Singapore",
+    "file": "HEARTBEAT.md"
+  },
+  "memory": {
+    "file": "MEMORY.md",
+    "maxSize": "50KB"
+  }
+}

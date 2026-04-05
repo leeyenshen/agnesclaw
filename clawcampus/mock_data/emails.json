@@ -1,0 +1,47 @@
+[
+  {
+    "id": "email-001",
+    "from": "tanweiming@comp.nus.edu.sg",
+    "subject": "CS2040S Lab 5 — Extended Deadline",
+    "date": "2026-04-04T14:30:00+08:00",
+    "body": "Dear students,\n\nDue to the server issues last Thursday, the deadline for Lab 5 (Graphs & BFS) has been extended to Thursday, 10 April 2026, 11:59 PM SGT. Please submit via CodeCrunch as usual.\n\nAlso, a reminder that the midterm exam is on Saturday, 19 April 2026 at 9:00 AM in MPSH 1. The exam covers Weeks 1-7 (up to and including graphs). You may bring one A4 cheat sheet (double-sided).\n\nBest,\nProf. Tan Wei Ming\nDepartment of Computer Science",
+    "isRead": false,
+    "importance": "high"
+  },
+  {
+    "id": "email-002",
+    "from": "nusstudentlife@nus.edu.sg",
+    "subject": "Rag & Flag Day Volunteer Sign-Up — Limited Slots!",
+    "date": "2026-04-04T10:15:00+08:00",
+    "body": "Hi there!\n\nRag & Flag Day is happening on Saturday, 12 April 2026! We still need 50 more volunteers for the morning shift (8 AM - 1 PM) at Clementi MRT. Sign up by Wednesday, 9 April on the NUS Student Life portal.\n\nCCA points will be awarded. Free lunch provided!\n\nCheers,\nNUS Student Life Committee",
+    "isRead": true,
+    "importance": "normal"
+  },
+  {
+    "id": "email-003",
+    "from": "limjunhao@u.nus.edu",
+    "subject": "MA2001 Group Project — Meeting This Monday",
+    "date": "2026-04-05T08:00:00+08:00",
+    "body": "Hey team,\n\nCan we meet on Monday (7 April) at 2 PM in CLB Seminar Room 3 to finalize our MA2001 Linear Algebra group project? The submission deadline is Friday, 11 April 2026, 5:00 PM.\n\nPlease bring your part of the write-up. I'll compile everything after the meeting.\n\nThanks,\nJun Hao",
+    "isRead": false,
+    "importance": "normal"
+  },
+  {
+    "id": "email-004",
+    "from": "grabfood@grab.com",
+    "subject": "Your GrabFood receipt — Al Amaan Express",
+    "date": "2026-04-04T19:45:00+08:00",
+    "body": "Thanks for your order!\n\nOrder #GF-88291034\nAl Amaan Express (Clementi)\n\n1x Chicken Biryani Set — $7.50\n1x Teh Tarik — $2.00\nDelivery fee — $2.49\nPlatform fee — $0.30\n\nTotal: $12.29\nPaid via GrabPay Wallet\n\nDate: 4 April 2026, 7:45 PM",
+    "isRead": true,
+    "importance": "normal"
+  },
+  {
+    "id": "email-005",
+    "from": "financeclub@nussu.org.sg",
+    "subject": "FREE Bloomberg Terminal Workshop — RSVP Now",
+    "date": "2026-04-03T16:00:00+08:00",
+    "body": "NUS Finance Society presents:\n\nBloomberg Terminal Workshop\nDate: Wednesday, 9 April 2026, 6:30 PM - 8:30 PM\nVenue: BIZ2-0301\n\nLearn how to use Bloomberg Terminal for equity research and fixed income analysis. Open to all NUS students. Limited to 40 pax — RSVP by Monday, 7 April at the link below.\n\nRSVP: https://forms.nus.edu.sg/bloomberg-workshop\n\nSee you there!\nNUS Finance Society",
+    "isRead": false,
+    "importance": "normal"
+  }
+]
