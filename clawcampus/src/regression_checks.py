@@ -39,6 +39,8 @@ if "openai" not in sys.modules:
 
 import outlook_client
 import job_matcher
+import canvas_client
+import assignment_coach
 
 
 def _seed_memory(path: Path):
@@ -74,8 +76,8 @@ def test_memory_cleanup_and_dedup(tmpdir: Path):
     assert changed is True, "cleanup_memory should repair malformed task entries"
 
     tasks = memory_manager.get_all_tasks()
-    assert len(tasks) == 1, "Expected repaired single task in memory"
-    assert "\n" not in tasks[0].get("title", ""), "Task title should be normalized to one line"
+    # Header-style synthetic task should be removed as low-quality noise.
+    assert len(tasks) == 0, "Expected malformed header-like task to be filtered out"
 
     tx = {"merchant": "GrabFood", "amount": 12.29, "date": "2026-04-05", "category": "food"}
     assert memory_manager.add_transaction(tx) is True
@@ -176,6 +178,53 @@ def test_job_email_detection():
     assert job_matcher.is_job_related_email(non_job_email) is False
 
 
+def test_assignment_brief_coach():
+    brief = canvas_client.get_assignment_brief("Lab 5")
+    assert brief is not None, "Expected mock/Canvas brief for Lab 5"
+    assert "brief_text" in brief and brief["brief_text"].strip()
+
+    analysis = assignment_coach.analyze_assignment_brief(
+        brief["brief_text"],
+        assignment_title=brief.get("title", ""),
+        course_name=brief.get("course_name", ""),
+        due_at=brief.get("due_at"),
+    )
+    assert analysis.get("recommended_slides"), "Expected slide recommendations"
+
+    report = assignment_coach.format_assignment_study_guide(
+        analysis,
+        assignment_title=brief.get("title", ""),
+        course_name=brief.get("course_name", ""),
+        due_at=brief.get("due_at"),
+        source_url=brief.get("source_url"),
+    )
+    assert "Lecture Slides to Read" in report
+    assert "Other Relevant Sources" in report
+
+
+def test_cross_source_duplicate_task_filtered(tmpdir: Path):
+    memory_manager.MEMORY_PATH = tmpdir / "MEMORY_dupe.md"
+    memory_manager.init_memory()
+    memory_manager.add_tasks([
+        {
+            "title": "Lab 5: Graphs & BFS",
+            "course": "CS2040S",
+            "due_date": "2026-04-10T15:59:00Z",
+            "urgency": "soon",
+            "source": "canvas",
+        },
+        {
+            "title": "Submit CS2040S Lab 5",
+            "course": "CS2040S",
+            "due_date": "2026-04-10T15:59:00Z",
+            "urgency": "soon",
+            "source": "email",
+        },
+    ])
+    tasks = memory_manager.get_all_tasks()
+    assert len(tasks) == 1, "Expected near-duplicate cross-source task to be deduplicated"
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -185,6 +234,8 @@ def main():
         test_timezone_default_and_override()
         test_jobmatch_template_parse_and_fallback()
         test_job_email_detection()
+        test_assignment_brief_coach()
+        test_cross_source_duplicate_task_filtered(tmpdir)
 
     print("All regression checks passed.")
 

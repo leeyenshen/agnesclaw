@@ -66,6 +66,27 @@ def _normalize_whitespace(value: str) -> str:
     return " ".join(value.split())
 
 
+_TASK_TITLE_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "for",
+    "on",
+    "at",
+    "of",
+    "and",
+    "by",
+    "with",
+    "submit",
+    "attend",
+    "take",
+    "complete",
+    "rsvp",
+    "reply",
+}
+
+
 def _normalize_task(task: dict) -> dict:
     normalized = dict(task)
     for key in ("title", "course", "raw_snippet"):
@@ -84,12 +105,101 @@ def _normalize_transaction(transaction: dict) -> dict:
     return normalized
 
 
-def _task_key(task: dict) -> tuple[str, str, str, str]:
+def _title_tokens(title: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    return {w for w in words if w and w not in _TASK_TITLE_STOPWORDS}
+
+
+def _course_code(value: str | None) -> str:
+    text = str(value or "")
+    match = re.search(r"\b([A-Za-z]{2,4}\d{4}[A-Za-z]?)\b", text)
+    return match.group(1).upper() if match else ""
+
+
+def _course_compatible(first: str | None, second: str | None) -> bool:
+    a = str(first or "").strip().lower()
+    b = str(second or "").strip().lower()
+    if not a or not b:
+        return True
+    if a == b or a in b or b in a:
+        return True
+    code_a = _course_code(a)
+    code_b = _course_code(b)
+    return bool(code_a and code_b and code_a == code_b)
+
+
+def _parse_due(value: str | None) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        due = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if due.tzinfo is None:
+        due = due.replace(tzinfo=timezone.utc)
+    return due
+
+
+def _due_close_hours(first: str | None, second: str | None, *, max_hours: float = 3.0) -> bool:
+    due_a = _parse_due(first)
+    due_b = _parse_due(second)
+    if not due_a or not due_b:
+        return False
+    delta = abs((due_a - due_b).total_seconds()) / 3600
+    return delta <= max_hours
+
+
+def _is_low_quality_task(task: dict) -> bool:
+    title = str(task.get("title", "")).strip().lower()
+    if not title:
+        return True
+    if title.startswith("subject:") and (" from:" in title or " date" in title):
+        return True
+    if "subject:" in title and "from:" in title and "date" in title:
+        return True
+    if len(title) > 140 and ("from:" in title or "subject:" in title):
+        return True
+    return False
+
+
+def _is_similar_task(candidate: dict, existing: dict) -> bool:
+    # Exact semantic key match.
+    if _task_key(candidate) == _task_key(existing):
+        return True
+
+    cand_course = str(candidate.get("course", "")).strip().lower()
+    exist_course = str(existing.get("course", "")).strip().lower()
+    if not _course_compatible(cand_course, exist_course):
+        return False
+
+    tokens_a = _title_tokens(str(candidate.get("title", "")))
+    tokens_b = _title_tokens(str(existing.get("title", "")))
+    if not tokens_a or not tokens_b:
+        return False
+
+    overlap = len(tokens_a & tokens_b)
+    min_size = min(len(tokens_a), len(tokens_b))
+    if min_size == 0:
+        return False
+
+    title_similar = overlap / min_size >= 0.6
+    if not title_similar:
+        return False
+
+    # Prefer dedup only when due timestamps are very close to avoid
+    # merging distinct class events with similarly named assignments.
+    return _due_close_hours(candidate.get("due_date"), existing.get("due_date"))
+
+
+def _task_key(task: dict) -> tuple[str, str, str]:
+    title = str(task.get("title", "")).strip().lower()
+    title = re.sub(r"^(submit|attend|take|complete|rsvp|reply)\s+", "", title)
+    course = str(task.get("course", "")).strip().lower()
+    course_code = _course_code(course)
     return (
-        str(task.get("title", "")).strip().lower(),
+        title,
         str(task.get("due_date", "")).strip().lower(),
-        str(task.get("course", "")).strip().lower(),
-        str(task.get("source", "")).strip().lower(),
+        course_code or course,
     )
 
 
@@ -187,18 +297,20 @@ def _dedup_transactions(transactions: list[dict]) -> tuple[list[dict], bool]:
 
 
 def _dedup_tasks(tasks: list[dict]) -> tuple[list[dict], bool]:
-    seen = set()
     unique = []
     changed = False
     for task in tasks:
-        key = _task_key(task)
-        if not key[0]:
+        if _is_low_quality_task(task):
             changed = True
             continue
-        if key in seen:
+        duplicate = False
+        for existing in unique:
+            if _is_similar_task(task, existing):
+                duplicate = True
+                break
+        if duplicate:
             changed = True
             continue
-        seen.add(key)
         unique.append(task)
     return unique, changed
 
@@ -274,8 +386,6 @@ def add_tasks(tasks: list[dict]):
 
     existing_section = _get_section_content(content, SECTION_TASKS)
     existing_tasks, _ = _parse_json_section(existing_section, kind="task")
-    existing_keys = {_task_key(t) for t in existing_tasks if t.get("title")}
-
     for raw_task in tasks:
         if not isinstance(raw_task, dict):
             continue
@@ -284,12 +394,18 @@ def add_tasks(tasks: list[dict]):
         if not isinstance(title, str) or not title.strip():
             continue
 
-        key = _task_key(task)
-        if key in existing_keys:
+        if _is_low_quality_task(task):
+            continue
+
+        duplicate = False
+        for existing in existing_tasks:
+            if _is_similar_task(task, existing):
+                duplicate = True
+                break
+        if duplicate:
             continue
 
         existing_tasks.append(task)
-        existing_keys.add(key)
 
     new_section = _serialize_json_section(existing_tasks)
     content = _replace_section_content(content, SECTION_TASKS, new_section)

@@ -1,6 +1,6 @@
 """
 Telegram bot for ClawCampus.
-Commands: /start, /digest, /tasks, /done, /draft, /deals, /spend, /jobmatch, /help
+Commands: /start, /digest, /tasks, /done, /draft, /deals, /spend, /jobmatch, /brief, /help
 Also handles forwarded messages → extract tasks.
 """
 
@@ -19,12 +19,19 @@ from telegram.ext import (
 
 from memory_manager import init_memory, add_tasks, mark_task_done, get_pending_tasks
 from task_extractor import extract_from_text, extract_all_sources
-from canvas_client import get_courses, get_todo_items, get_upcoming_events
+from canvas_client import (
+    get_courses,
+    get_todo_items,
+    get_upcoming_events,
+    get_assignment_brief,
+    list_assignment_titles,
+)
 from outlook_client import get_unread_emails
 from digest_builder import build_digest, build_task_list
 from email_drafter import draft_reply_for_latest
 from food_scanner import get_todays_deals_message
 from finance_tracker import parse_transaction_text, get_spending_summary
+from assignment_coach import analyze_assignment_brief, format_assignment_study_guide
 from job_matcher import (
     parse_jobmatch_sections,
     looks_like_jobmatch_request,
@@ -156,6 +163,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/deals — Today's food deals near you\n"
         "/spend — Weekly spending summary\n"
         "/jobmatch — Scan unread job emails or paste one manually\n"
+        "/brief — Analyze assignment brief + reading plan\n"
         "/sync — Sync Canvas + emails\n"
         "/canvas — View current Canvas assignments and events\n"
         "/courses — List your Canvas courses\n"
@@ -245,6 +253,91 @@ async def cmd_courses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for course in courses:
         lines.append(f"  \u2022 {course.get('name')} (ID: {course.get('id')})")
     await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Analyze an assignment brief and suggest lecture slides/sources to read.
+
+    Usage:
+      /brief <assignment keyword>    # fetch brief from Canvas by title/id
+      /brief text: <brief text...>   # analyze pasted brief directly
+    """
+    message = update.effective_message or update.message
+    if not message or not message.text:
+        return
+
+    raw = message.text
+    payload = raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else ""
+
+    if not payload:
+        titles = list_assignment_titles(limit=8)
+        lines = [
+            "Usage: /brief <assignment keyword>",
+            "Or: /brief text: <paste assignment brief>",
+        ]
+        if titles:
+            lines.append("")
+            lines.append("Current Canvas assignments:")
+            for title in titles:
+                lines.append(f"  • {title}")
+        await message.reply_text("\n".join(lines))
+        return
+
+    lower_payload = payload.lower()
+    manual_prefixes = ("text:", "brief:", "manual:")
+    manual_mode = any(lower_payload.startswith(prefix) for prefix in manual_prefixes)
+    likely_full_text = (len(payload) > 220 and "\n" in payload) or len(payload) > 500
+
+    if manual_mode or likely_full_text:
+        brief_text = payload.split(":", 1)[1].strip() if manual_mode and ":" in payload else payload.strip()
+        assignment_meta = {
+            "title": "Manual assignment brief",
+            "course_name": "",
+            "due_at": None,
+            "source_url": None,
+        }
+    else:
+        await message.reply_text("Downloading assignment brief from Canvas...")
+        assignment_meta = get_assignment_brief(payload)
+        if not assignment_meta:
+            titles = list_assignment_titles(limit=8)
+            lines = [
+                f"I couldn't find a Canvas assignment matching '{payload}'.",
+                "Try using a more specific keyword or assignment ID.",
+            ]
+            if titles:
+                lines.append("")
+                lines.append("Available assignments:")
+                for title in titles:
+                    lines.append(f"  • {title}")
+            await message.reply_text("\n".join(lines))
+            return
+        brief_text = assignment_meta.get("brief_text", "")
+
+    if not brief_text.strip():
+        await message.reply_text(
+            "I found the assignment metadata, but no brief text was available. "
+            "Paste the brief directly with /brief text: ..."
+        )
+        return
+
+    await message.reply_text("Analyzing brief and building your reading plan...")
+    analysis = analyze_assignment_brief(
+        brief_text,
+        assignment_title=assignment_meta.get("title", ""),
+        course_name=assignment_meta.get("course_name", ""),
+        due_at=assignment_meta.get("due_at"),
+    )
+    report = format_assignment_study_guide(
+        analysis,
+        assignment_title=assignment_meta.get("title", ""),
+        course_name=assignment_meta.get("course_name", ""),
+        due_at=assignment_meta.get("due_at"),
+        source_url=assignment_meta.get("source_url"),
+    )
+    for chunk in _chunk_message(report):
+        await message.reply_text(chunk)
 
 
 async def cmd_draft(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -397,6 +490,7 @@ def run_bot():
     app.add_handler(CommandHandler("deals", cmd_deals))
     app.add_handler(CommandHandler("spend", cmd_spend))
     app.add_handler(CommandHandler("jobmatch", cmd_jobmatch))
+    app.add_handler(CommandHandler("brief", cmd_brief))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -408,6 +502,7 @@ def run_bot():
         BotCommand("canvas", "View current Canvas assignments/events"),
         BotCommand("courses", "List your Canvas courses"),
         BotCommand("jobmatch", "Scan job emails / run matching"),
+        BotCommand("brief", "Analyze assignment brief + reading plan"),
     ])
     logger.info("ClawCampus bot started! Listening for messages...")
     app.run_polling()

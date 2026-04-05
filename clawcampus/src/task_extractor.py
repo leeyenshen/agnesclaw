@@ -6,6 +6,7 @@ Falls back to rule-based extraction if Agnes API is unavailable.
 from __future__ import annotations
 
 import json
+import re
 
 from agnes_client import call_agnes_pro, extract_json
 from canvas_client import get_todo_items, get_upcoming_events
@@ -34,6 +35,110 @@ Today's date is {today}.
 Respond ONLY with a JSON array. No markdown, no explanation."""
 
 
+_TITLE_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "for",
+    "on",
+    "at",
+    "of",
+    "and",
+    "by",
+    "with",
+    "submit",
+    "attend",
+    "take",
+    "complete",
+    "rsvp",
+    "reply",
+}
+
+
+def _title_tokens(title: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    return {w for w in words if w and w not in _TITLE_STOPWORDS}
+
+
+def _course_code(value: str | None) -> str:
+    text = str(value or "")
+    match = re.search(r"\b([A-Za-z]{2,4}\d{4}[A-Za-z]?)\b", text)
+    return match.group(1).upper() if match else ""
+
+
+def _course_compatible(first: str | None, second: str | None) -> bool:
+    a = str(first or "").strip().lower()
+    b = str(second or "").strip().lower()
+    if not a or not b:
+        return True
+    if a == b or a in b or b in a:
+        return True
+    code_a = _course_code(a)
+    code_b = _course_code(b)
+    return bool(code_a and code_b and code_a == code_b)
+
+
+def _is_low_quality_email_title(title: str) -> bool:
+    normalized = " ".join(str(title or "").lower().split())
+    if not normalized:
+        return True
+    if normalized.startswith("subject:") and (" from:" in normalized or " date" in normalized):
+        return True
+    if "subject:" in normalized and "from:" in normalized and "date" in normalized:
+        return True
+    return False
+
+
+def _is_duplicate_task(candidate: dict, existing: dict) -> bool:
+    candidate_title = str(candidate.get("title", "")).strip().lower()
+    existing_title = str(existing.get("title", "")).strip().lower()
+    if candidate_title == existing_title and candidate_title:
+        return True
+
+    cand_course = str(candidate.get("course", "")).strip().lower()
+    exist_course = str(existing.get("course", "")).strip().lower()
+    if not _course_compatible(cand_course, exist_course):
+        return False
+
+    due_a = parse_iso_datetime(candidate.get("due_date"))
+    due_b = parse_iso_datetime(existing.get("due_date"))
+    if not due_a or not due_b:
+        return False
+    delta_hours = abs((due_a - due_b).total_seconds()) / 3600
+    if delta_hours > 3:
+        return False
+
+    tokens_a = _title_tokens(candidate_title)
+    tokens_b = _title_tokens(existing_title)
+    if not tokens_a or not tokens_b:
+        return False
+    overlap = len(tokens_a & tokens_b)
+    return overlap / min(len(tokens_a), len(tokens_b)) >= 0.6
+
+
+def _deduplicate_tasks(tasks: list[dict]) -> list[dict]:
+    # Keep Canvas-first ordering so canonical assignment/event names survive.
+    source_rank = {"canvas": 0, "email": 1, "manual": 2}
+    ordered = sorted(tasks, key=lambda t: source_rank.get(str(t.get("source", "")).lower(), 3))
+
+    unique: list[dict] = []
+    for task in ordered:
+        title = str(task.get("title", "")).strip()
+        if not title:
+            continue
+        if str(task.get("source", "")).lower() == "email" and _is_low_quality_email_title(title):
+            continue
+        if any(_is_duplicate_task(task, existing) for existing in unique):
+            continue
+        unique.append(task)
+
+    # Preserve urgency ordering for user-facing task list.
+    urgency_order = {"urgent": 0, "soon": 1, "later": 2, "info": 3}
+    unique.sort(key=lambda t: urgency_order.get(t.get("urgency", "info"), 4))
+    return unique
+
+
 def extract_from_text(text: str, source: str = "manual") -> list[dict]:
     """Extract tasks from arbitrary text using Agnes-1.5-Pro."""
     today = now_local().strftime("%Y-%m-%d")
@@ -54,6 +159,11 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
     except Exception as e:
         print(f"[task_extractor] Agnes call failed: {e}")
 
+    if source == "email":
+        # Avoid persisting noisy synthetic placeholders like:
+        # "Subject: ... From: ... Date ..."
+        return []
+
     # Fallback: return a single generic task
     return [{
         "title": text[:80].strip(),
@@ -70,7 +180,14 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
 def extract_from_email(email: dict) -> list[dict]:
     """Extract tasks from a single email dict."""
     text = f"Subject: {email.get('subject', '')}\nFrom: {email.get('from', '')}\nDate: {email.get('date', '')}\n\n{email.get('body', '')}"
-    return extract_from_text(text, source="email")
+    tasks = extract_from_text(text, source="email")
+    cleaned = []
+    for task in tasks:
+        title = str(task.get("title", "")).strip()
+        if _is_low_quality_email_title(title):
+            continue
+        cleaned.append(task)
+    return cleaned
 
 
 def extract_from_canvas_todo(item: dict) -> dict:
@@ -150,20 +267,7 @@ def extract_all_sources() -> list[dict]:
     for email in get_unread_emails():
         tasks.extend(extract_from_email(email))
 
-    # Deduplicate by title (simple approach)
-    seen_titles = set()
-    unique_tasks = []
-    for task in tasks:
-        title_key = task["title"].lower().strip()
-        if title_key not in seen_titles:
-            seen_titles.add(title_key)
-            unique_tasks.append(task)
-
-    # Sort: urgent first, then soon, then later, then info
-    urgency_order = {"urgent": 0, "soon": 1, "later": 2, "info": 3}
-    unique_tasks.sort(key=lambda t: urgency_order.get(t.get("urgency", "info"), 4))
-
-    return unique_tasks
+    return _deduplicate_tasks(tasks)
 
 
 if __name__ == "__main__":

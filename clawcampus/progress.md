@@ -45,6 +45,14 @@
 - [x] Added new skill docs: `skills/job-matching/SKILL.md`
 - [x] Extended regression checks to cover jobmatch parsing/fallback
 
+## Phase 7: Assignment Brief Coach ✅
+- [x] `src/assignment_coach.py` — Agnes-powered assignment brief analysis with fallback
+- [x] `src/canvas_client.py` — assignment brief retrieval from Canvas API/mock metadata
+- [x] Added Telegram command `/brief` for brief analysis from Canvas or pasted text
+- [x] Added CLI mode: `python main.py --brief --assignment "..."` or `--brief-file ...`
+- [x] Added mock assignment briefs: `mock_data/canvas_assignment_briefs.json`
+- [x] Added skill docs: `skills/assignment-coach/SKILL.md`
+
 ## Test Results
 - Demo produces full output: 11 tasks extracted, 2 food deals, 1 transaction tracked
 - Daily digest shows proper urgency grouping (urgent/soon/later)
@@ -53,6 +61,7 @@
 - Spending summary with category breakdown and budget tracking
 - Telegram bot has mock demo mode when no bot token is set
 - Jobmatch pipeline returns structured A-E output and fallback scoring when stage-1 JSON is missing
+- Assignment brief coach returns topic-focused reading plan with slides/sources + uncertainty notes
 - Regression checks pass with local stubs: `python src/regression_checks.py`
 
 ## Files Created (27 total)

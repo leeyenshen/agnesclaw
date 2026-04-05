@@ -50,6 +50,7 @@ This is **chain-of-thought reasoning across multiple tasks**, not a single chat 
 | Persistent Memory | ✅ MVP | MEMORY.md with structured task storage |
 | Email Drafting | ✅ MVP | Context-aware reply generation |
 | Job Matching + Resume Tailoring | ✅ MVP | Extract job listings, rank fit, and tailor truthful resume drafts |
+| Assignment Brief Coach | ✅ MVP | Analyze assignment brief and recommend slides + relevant sources |
 | Food Deal Scanner | ✅ MVP | Campus deals near your classes |
 | Finance Tracker | ✅ MVP | Receipt parsing + budget alerts |
 | Telegram Bot | ✅ MVP | Full command interface |
@@ -91,6 +92,7 @@ python main.py
 | `/sync` | Force sync from Canvas + Outlook |
 | `/draft` | Draft reply to latest email |
 | `/jobmatch` | Scan unread job-related emails (or paste one manually) and generate tailored resume drafts |
+| `/brief` | Analyze assignment brief and return reading plan |
 | `/deals` | Today's food deals |
 | `/spend` | Weekly spending summary |
 
@@ -105,6 +107,12 @@ python main.py --jobmatch
 
 # Option B: run on a specific job alert email file
 python main.py --jobmatch --email-file ../job_email.txt --resume-file ../resume.txt --prefs-file ../prefs.txt
+
+# Option C: analyze a Canvas assignment brief by keyword
+python main.py --brief --assignment "Lab 5"
+
+# Option D: analyze a local assignment brief text file
+python main.py --brief --brief-file ../assignment_brief.txt --title "Custom Assignment"
 ```
 
 ## Architecture
@@ -123,7 +131,8 @@ clawcampus/
 │   ├── deadline-extract/
 │   ├── job-matching/
 │   ├── food-deals/
-│   └── finance-tracker/
+│   ├── finance-tracker/
+│   └── assignment-coach/
 ├── src/
 │   ├── main.py            # Entry point
 │   ├── agnes_client.py    # Agnes-1.5-Pro via ZenMux
@@ -136,6 +145,7 @@ clawcampus/
 │   ├── food_scanner.py    # Food deal scanner
 │   ├── finance_tracker.py # Receipt parser + budget tracker
 │   ├── job_matcher.py     # Job alert ranking + resume tailoring
+│   ├── assignment_coach.py # Assignment brief analysis + study guidance
 │   └── telegram_bot.py    # Telegram bot interface
 └── mock_data/             # Realistic demo data
 ```

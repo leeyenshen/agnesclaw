@@ -1,0 +1,38 @@
+[
+  {
+    "assignment_id": 204001,
+    "course_id": 2040,
+    "course_name": "CS2040S Data Structures and Algorithms",
+    "title": "Lab 5: Graphs & BFS",
+    "due_at": "2026-04-10T15:59:00Z",
+    "source_url": "https://canvas.nus.edu.sg/courses/2040/assignments/204001",
+    "brief_text": "Implement a graph toolkit for unweighted graphs with adjacency list representation. Required tasks: (1) parse graph input from file, (2) implement BFS from a source node, (3) report shortest path distance for all reachable nodes, and (4) explain time complexity. Include test cases for disconnected components and invalid nodes. Submission: one zip with source code and a short PDF report (max 2 pages). Focus topics: graph representation, BFS queue workflow, runtime analysis O(V+E)."
+  },
+  {
+    "assignment_id": 200101,
+    "course_id": 2001,
+    "course_name": "MA2001 Linear Algebra I",
+    "title": "Group Project: Linear Algebra Applications",
+    "due_at": "2026-04-11T09:00:00Z",
+    "source_url": "https://canvas.nus.edu.sg/courses/2001/assignments/200101",
+    "brief_text": "As a group, choose one real-world application of linear algebra and build a technical explainer. Your report must include at least one matrix formulation, one eigenvalue/eigenvector interpretation, and one numerical example. Suggested domains: recommendation systems, image compression, network analysis, or PCA. Deliverables: 6-page report + 8-minute presentation slides. Evaluation emphasizes conceptual accuracy, clarity, and interpretation of results."
+  },
+  {
+    "assignment_id": 210501,
+    "course_id": 2105,
+    "course_name": "CS2105 Introduction to Computer Networks",
+    "title": "Tutorial 8: Entity-Relationship Diagrams",
+    "due_at": "2026-04-08T15:59:00Z",
+    "source_url": "https://canvas.nus.edu.sg/courses/2105/assignments/210501",
+    "brief_text": "Design an ER diagram for a campus service platform handling students, modules, tutorials, tutors, and attendance records. Clearly model entities, keys, relationships, and cardinalities. Then map your ER model to a relational schema and justify one normalization decision. Submit one PDF with ER diagram and schema notes. Keep assumptions explicit."
+  },
+  {
+    "assignment_id": 160101,
+    "course_id": 1601,
+    "course_name": "GEA1000 Quantitative Reasoning",
+    "title": "Essay: Ethical Implications of AI in Education",
+    "due_at": "2026-04-18T15:59:00Z",
+    "source_url": "https://canvas.nus.edu.sg/courses/1601/assignments/160101",
+    "brief_text": "Write a 1500-word essay evaluating the ethical implications of AI tools in higher education. Address fairness, bias, privacy, academic integrity, and accountability. Compare at least two stakeholder perspectives (students, faculty, institutions, or policymakers). Include at least three credible references and one concrete policy recommendation."
+  }
+]

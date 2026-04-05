@@ -8,6 +8,7 @@ Usage:
     python main.py --sync       # Run one-time sync from Canvas + Outlook
     python main.py --digest     # Generate and print daily digest
     python main.py --jobmatch [--email-file email.txt] [--resume-file resume.txt] [--prefs-file prefs.txt]
+    python main.py --brief [--assignment "Lab 5"] [--brief-file brief.txt]
     python main.py --demo       # Run full demo flow with mock data
 """
 
@@ -34,7 +35,9 @@ from job_matcher import (
     email_to_jobmatch_text,
     load_default_profile_text,
 )
+from assignment_coach import analyze_assignment_brief, format_assignment_study_guide
 from outlook_client import get_inbox, get_unread_emails
+from canvas_client import get_assignment_brief, list_assignment_titles
 from telegram_bot import run_bot
 
 
@@ -151,6 +154,76 @@ def run_jobmatch():
     print(format_job_matching_report(result))
 
 
+def run_brief():
+    """
+    Analyze an assignment brief and output a reading plan.
+
+    Usage:
+      python main.py --brief --assignment "Lab 5"
+      python main.py --brief --brief-file ../assignment_brief.txt --title "Custom Title"
+    """
+    assignment_query = _arg_value("--assignment")
+    brief_file = _arg_value("--brief-file")
+    title_override = _arg_value("--title") or ""
+    course_override = _arg_value("--course") or ""
+    due_override = _arg_value("--due")
+
+    if brief_file:
+        brief_text = _read_text_file(brief_file)
+        if not brief_text.strip():
+            print("Brief text is empty. Check --brief-file input.")
+            return
+        meta = {
+            "title": title_override or "Manual assignment brief",
+            "course_name": course_override,
+            "due_at": due_override,
+            "source_url": None,
+            "brief_text": brief_text,
+        }
+    elif assignment_query:
+        meta = get_assignment_brief(assignment_query)
+        if not meta:
+            print(f"Could not find a Canvas assignment matching '{assignment_query}'.")
+            titles = list_assignment_titles(limit=8)
+            if titles:
+                print("Available assignments:")
+                for title in titles:
+                    print(f"  - {title}")
+            return
+        if title_override:
+            meta["title"] = title_override
+        if course_override:
+            meta["course_name"] = course_override
+        if due_override:
+            meta["due_at"] = due_override
+    else:
+        print("Usage: python main.py --brief --assignment \"Lab 5\"")
+        print("   or: python main.py --brief --brief-file ../assignment_brief.txt")
+        titles = list_assignment_titles(limit=8)
+        if titles:
+            print("\nCurrent Canvas assignments:")
+            for title in titles:
+                print(f"  - {title}")
+        return
+
+    print("Analyzing assignment brief...")
+    analysis = analyze_assignment_brief(
+        meta.get("brief_text", ""),
+        assignment_title=meta.get("title", ""),
+        course_name=meta.get("course_name", ""),
+        due_at=meta.get("due_at"),
+    )
+    report = format_assignment_study_guide(
+        analysis,
+        assignment_title=meta.get("title", ""),
+        course_name=meta.get("course_name", ""),
+        due_at=meta.get("due_at"),
+        source_url=meta.get("source_url"),
+    )
+    print()
+    print(report)
+
+
 def run_demo():
     """Full demo flow with mock data."""
     print("=" * 50)
@@ -196,6 +269,8 @@ def main():
         run_digest()
     elif "--jobmatch" in sys.argv:
         run_jobmatch()
+    elif "--brief" in sys.argv:
+        run_brief()
     elif "--demo" in sys.argv:
         run_demo()
     else:
