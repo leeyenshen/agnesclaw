@@ -8,7 +8,7 @@ import os
 import logging
 from dotenv import load_dotenv
 
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -19,12 +19,13 @@ from telegram.ext import (
 
 from memory_manager import init_memory, add_tasks, mark_task_done, get_pending_tasks
 from task_extractor import extract_from_text, extract_all_sources
+from canvas_client import get_courses, get_todo_items, get_upcoming_events
 from digest_builder import build_digest, build_task_list
 from email_drafter import draft_reply_for_latest
 from food_scanner import get_todays_deals_message
 from finance_tracker import parse_transaction_text, get_spending_summary
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawcampus")
@@ -35,7 +36,10 @@ BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Welcome message."""
     init_memory()
-    await update.message.reply_text(
+    message = update.effective_message or update.message
+    if not message:
+        return
+    await message.reply_text(
         "Hey! I'm ClawCampus, your student life agent.\n\n"
         "Here's what I can do:\n"
         "/digest — Get your daily summary\n"
@@ -45,6 +49,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/deals — Today's food deals near you\n"
         "/spend — Weekly spending summary\n"
         "/sync — Sync Canvas + emails\n"
+        "/canvas — View current Canvas assignments and events\n"
+        "/courses — List your Canvas courses\n"
         "/help — Show this message\n\n"
         "You can also forward me any message and I'll extract tasks from it!"
     )
@@ -82,6 +88,54 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Synced! Found {len(tasks)} items.\n\n" + build_task_list()
     )
+
+
+async def cmd_canvas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current Canvas assignments and events."""
+    todos = get_todo_items()
+    events = get_upcoming_events()
+    lines = []
+
+    if todos:
+        lines.append("\U0001f4dd Canvas Assignments:")
+        for item in todos:
+            assignment = item.get("assignment", {})
+            title = assignment.get("name", "Untitled")
+            due = assignment.get("due_at") or "no deadline"
+            course = item.get("context_name", "Unknown course")
+            lines.append(f"  \u2022 {title} ({course}) — due {due}")
+            if assignment.get("html_url"):
+                lines.append(f"    {assignment.get('html_url')}")
+        lines.append("")
+    else:
+        lines.append("No Canvas assignments found.")
+
+    if events:
+        lines.append("\U0001f4c5 Canvas Events:")
+        for event in events:
+            title = event.get("title", "Untitled event")
+            start = event.get("start_at") or "TBA"
+            course = event.get("context_name", "Unknown course")
+            location = event.get("location_name", "TBA")
+            lines.append(f"  \u2022 {title} ({course}) — {start} @ {location}")
+        lines.append("")
+    else:
+        lines.append("No upcoming Canvas events found.")
+
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_courses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List enrolled Canvas courses."""
+    courses = get_courses()
+    if not courses:
+        await update.message.reply_text("No Canvas courses found.")
+        return
+
+    lines = ["\U0001f393 Enrolled Canvas Courses:"]
+    for course in courses:
+        lines.append(f"  \u2022 {course.get('name')} (ID: {course.get('id')})")
+    await update.message.reply_text("\n".join(lines))
 
 
 async def cmd_draft(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,12 +211,22 @@ def run_bot():
     app.add_handler(CommandHandler("tasks", cmd_tasks))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("sync", cmd_sync))
+    app.add_handler(CommandHandler("canvas", cmd_canvas))
+    app.add_handler(CommandHandler("courses", cmd_courses))
     app.add_handler(CommandHandler("draft", cmd_draft))
     app.add_handler(CommandHandler("deals", cmd_deals))
     app.add_handler(CommandHandler("spend", cmd_spend))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    app.bot.set_my_commands([
+        BotCommand("start", "Show welcome/help"),
+        BotCommand("digest", "Get your daily summary"),
+        BotCommand("tasks", "See all pending tasks"),
+        BotCommand("sync", "Sync Canvas + emails"),
+        BotCommand("canvas", "View current Canvas assignments/events"),
+        BotCommand("courses", "List your Canvas courses"),
+    ])
     logger.info("ClawCampus bot started! Listening for messages...")
     app.run_polling()
 
@@ -178,7 +242,17 @@ def _run_mock_demo():
     add_tasks(tasks)
     print(f"  Synced! Found {len(tasks)} items.\n")
 
-    print("Simulating /digest:")
+    print("Simulating /canvas:")
+    todos = get_todo_items()
+    events = get_upcoming_events()
+    print(f"  Canvas assignments: {len(todos)}")
+    print(f"  Canvas events: {len(events)}\n")
+
+    print("Simulating /courses:")
+    courses = get_courses()
+    for course in courses:
+        print(f"  - {course.get('name')} (ID: {course.get('id')})")
+    print("\nSimulating /digest:")
     print(build_digest())
 
     print("\nSimulating /tasks:")
