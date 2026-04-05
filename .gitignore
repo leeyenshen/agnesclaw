@@ -1,0 +1,14 @@
+.venv/*
+*.pyc
+__pycache__/
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.sqlite3
+*.env
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12      
