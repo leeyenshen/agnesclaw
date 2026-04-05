@@ -1,6 +1,6 @@
 """
 Telegram bot for ClawCampus.
-Commands: /start, /digest, /tasks, /done, /draft, /deals, /spend, /help
+Commands: /start, /digest, /tasks, /done, /draft, /deals, /spend, /jobmatch, /help
 Also handles forwarded messages → extract tasks.
 """
 
@@ -20,10 +20,21 @@ from telegram.ext import (
 from memory_manager import init_memory, add_tasks, mark_task_done, get_pending_tasks
 from task_extractor import extract_from_text, extract_all_sources
 from canvas_client import get_courses, get_todo_items, get_upcoming_events
+from outlook_client import get_unread_emails
 from digest_builder import build_digest, build_task_list
 from email_drafter import draft_reply_for_latest
 from food_scanner import get_todays_deals_message
 from finance_tracker import parse_transaction_text, get_spending_summary
+from job_matcher import (
+    parse_jobmatch_sections,
+    looks_like_jobmatch_request,
+    is_job_related_text,
+    filter_job_related_emails,
+    email_to_jobmatch_text,
+    load_default_profile_text,
+    run_job_matching,
+    format_job_matching_report,
+)
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -31,6 +42,102 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawcampus")
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+
+def _chunk_message(text: str, limit: int = 3800) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    chunks = []
+    current = []
+    current_len = 0
+    for line in text.splitlines():
+        line_len = len(line) + 1
+        if current and current_len + line_len > limit:
+            chunks.append("\n".join(current))
+            current = [line]
+            current_len = line_len
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
+
+def _jobmatch_template() -> str:
+    return (
+        "Run /jobmatch with no arguments to scan unread job-related emails.\n\n"
+        "Or send /jobmatch followed by this template:\n\n"
+        "Here is my master resume/profile:\n"
+        "[PASTE YOUR MASTER RESUME HERE]\n\n"
+        "Here is the email to analyze:\n"
+        "[PASTE THE JOB ALERT EMAIL HERE]\n\n"
+        "My goals and preferences:\n"
+        "- Preferred roles:\n"
+        "- Preferred industries:\n"
+        "- Preferred internship period:\n"
+        "- Roles I do NOT want:\n"
+        "- Strongest skills:\n"
+        "- Weakest areas:\n"
+        "- Anything else relevant:"
+    )
+
+
+async def _run_jobmatch_and_reply(
+    message,
+    *,
+    master_resume: str,
+    email_text: str,
+    goals_preferences: str,
+):
+    await message.reply_text("Analyzing listings and tailoring resume drafts. This may take up to a minute...")
+    result = run_job_matching(
+        master_resume=master_resume,
+        email_text=email_text,
+        goals_preferences=goals_preferences,
+        top_k=5,
+    )
+    report = format_job_matching_report(result)
+    for part in _chunk_message(report):
+        await message.reply_text(part)
+
+
+async def _run_jobmatch_for_inbox_emails(
+    message,
+    *,
+    announce_if_none: bool = True,
+    max_emails: int = 3,
+):
+    unread = get_unread_emails()
+    job_emails = filter_job_related_emails(unread)
+    if not job_emails:
+        if announce_if_none:
+            await message.reply_text(
+                "No job-related unread emails found right now.\n\n"
+                "You can still use /jobmatch with pasted email content."
+            )
+        return
+
+    profile_text = load_default_profile_text()
+    limited = job_emails[: max(1, max_emails)]
+    await message.reply_text(
+        f"Found {len(job_emails)} job-related unread email(s). "
+        f"Processing {len(limited)} most recent now..."
+    )
+
+    for idx, email in enumerate(limited, start=1):
+        subject = email.get("subject", "No Subject")
+        sender = email.get("from", "unknown")
+        header = f"Job Email {idx}/{len(limited)}\nSubject: {subject}\nFrom: {sender}\n"
+        result = run_job_matching(
+            master_resume=profile_text,
+            email_text=email_to_jobmatch_text(email),
+            goals_preferences="",
+            top_k=5,
+        )
+        report = header + "\n" + format_job_matching_report(result)
+        for part in _chunk_message(report):
+            await message.reply_text(part)
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,6 +155,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/draft — Draft a reply to your latest email\n"
         "/deals — Today's food deals near you\n"
         "/spend — Weekly spending summary\n"
+        "/jobmatch — Scan unread job emails or paste one manually\n"
         "/sync — Sync Canvas + emails\n"
         "/canvas — View current Canvas assignments and events\n"
         "/courses — List your Canvas courses\n"
@@ -88,6 +196,7 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Synced! Found {len(tasks)} items.\n\n" + build_task_list()
     )
+    await _run_jobmatch_for_inbox_emails(update.message, announce_if_none=False, max_emails=2)
 
 
 async def cmd_canvas(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,11 +271,81 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
 
 
+async def cmd_jobmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Run job matching + resume tailoring.
+    Expects the message payload to include:
+    - master resume/profile
+    - email to analyze
+    - goals and preferences
+    """
+    message = update.effective_message or update.message
+    if not message or not message.text:
+        return
+
+    raw = message.text
+    payload = raw.split(maxsplit=1)[1].strip() if " " in raw.strip() else ""
+
+    if not payload:
+        await _run_jobmatch_for_inbox_emails(message, announce_if_none=True, max_emails=3)
+        return
+
+    if payload.lower() in {"inbox", "emails", "scan"}:
+        await _run_jobmatch_for_inbox_emails(message, announce_if_none=True, max_emails=3)
+        return
+
+    parsed = parse_jobmatch_sections(payload)
+    if parsed:
+        await _run_jobmatch_and_reply(
+            message,
+            master_resume=parsed.get("master_resume", ""),
+            email_text=parsed.get("email_text", ""),
+            goals_preferences=parsed.get("goals_preferences", ""),
+        )
+        return
+
+    # Fallback mode: treat payload as email-only request.
+    await _run_jobmatch_and_reply(
+        message,
+        master_resume="",
+        email_text=payload,
+        goals_preferences="",
+    )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle forwarded messages or plain text — extract tasks."""
     text = update.message.text
     if not text:
         await update.message.reply_text("Send me some text and I'll extract tasks from it!")
+        return
+
+    parsed = parse_jobmatch_sections(text)
+    if parsed:
+        await _run_jobmatch_and_reply(
+            update.message,
+            master_resume=parsed.get("master_resume", ""),
+            email_text=parsed.get("email_text", ""),
+            goals_preferences=parsed.get("goals_preferences", ""),
+        )
+        return
+
+    if is_job_related_text(text) and len(text) >= 120:
+        await _run_jobmatch_and_reply(
+            update.message,
+            master_resume=load_default_profile_text(),
+            email_text=text,
+            goals_preferences="",
+        )
+        return
+
+    if looks_like_jobmatch_request(text) and len(text) > 300:
+        await _run_jobmatch_and_reply(
+            update.message,
+            master_resume="",
+            email_text=text,
+            goals_preferences="",
+        )
         return
 
     await update.message.reply_text("Analyzing your message...")
@@ -217,6 +396,7 @@ def run_bot():
     app.add_handler(CommandHandler("draft", cmd_draft))
     app.add_handler(CommandHandler("deals", cmd_deals))
     app.add_handler(CommandHandler("spend", cmd_spend))
+    app.add_handler(CommandHandler("jobmatch", cmd_jobmatch))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
@@ -227,6 +407,7 @@ def run_bot():
         BotCommand("sync", "Sync Canvas + emails"),
         BotCommand("canvas", "View current Canvas assignments/events"),
         BotCommand("courses", "List your Canvas courses"),
+        BotCommand("jobmatch", "Scan job emails / run matching"),
     ])
     logger.info("ClawCampus bot started! Listening for messages...")
     app.run_polling()

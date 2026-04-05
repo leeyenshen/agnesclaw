@@ -35,6 +35,16 @@
 - [x] End-to-end test: `python3 main.py --demo` runs successfully
 - [x] All features work with mock data fallback (Agnes graceful degradation confirmed)
 
+## Phase 6: Job Matching + Resume Tailoring ✅
+- [x] src/job_matcher.py — 2-stage pipeline (job extraction/ranking + resume tailoring)
+- [x] Added strict prompts and JSON schemas for OpenClaw style execution
+- [x] Added fallback extraction/ranking when model output is unavailable
+- [x] Added Telegram command `/jobmatch` with template parsing and long-response chunking
+- [x] Added inbox-driven mode: unread job-related emails trigger jobmatching via `/jobmatch` and `/sync`
+- [x] Added CLI mode: `python main.py --jobmatch` (inbox scan) or `--email-file ...`
+- [x] Added new skill docs: `skills/job-matching/SKILL.md`
+- [x] Extended regression checks to cover jobmatch parsing/fallback
+
 ## Test Results
 - Demo produces full output: 11 tasks extracted, 2 food deals, 1 transaction tracked
 - Daily digest shows proper urgency grouping (urgent/soon/later)
@@ -42,12 +52,14 @@
 - Food deals filtered by today's date
 - Spending summary with category breakdown and budget tracking
 - Telegram bot has mock demo mode when no bot token is set
+- Jobmatch pipeline returns structured A-E output and fallback scoring when stage-1 JSON is missing
+- Regression checks pass with local stubs: `python src/regression_checks.py`
 
-## Files Created (25 total)
+## Files Created (27 total)
 - 10 Python source files in src/
 - 4 mock data JSON files
 - 5 OpenClaw markdown configs
 - 1 openclaw.json
-- 5 skill SKILL.md files
+- 6 skill SKILL.md files
 - 1 README.md
 - 1 requirements.txt, 1 .env.example, 1 progress.md

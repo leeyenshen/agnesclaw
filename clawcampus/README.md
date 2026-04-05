@@ -49,6 +49,7 @@ This is **chain-of-thought reasoning across multiple tasks**, not a single chat 
 | Daily Digest | ✅ MVP | Prioritized summary via Telegram |
 | Persistent Memory | ✅ MVP | MEMORY.md with structured task storage |
 | Email Drafting | ✅ MVP | Context-aware reply generation |
+| Job Matching + Resume Tailoring | ✅ MVP | Extract job listings, rank fit, and tailor truthful resume drafts |
 | Food Deal Scanner | ✅ MVP | Campus deals near your classes |
 | Finance Tracker | ✅ MVP | Receipt parsing + budget alerts |
 | Telegram Bot | ✅ MVP | Full command interface |
@@ -89,10 +90,22 @@ python main.py
 | `/done <task>` | Mark a task as done |
 | `/sync` | Force sync from Canvas + Outlook |
 | `/draft` | Draft reply to latest email |
+| `/jobmatch` | Scan unread job-related emails (or paste one manually) and generate tailored resume drafts |
 | `/deals` | Today's food deals |
 | `/spend` | Weekly spending summary |
 
 **Forward any message** to the bot and it will extract tasks automatically!
+`/sync` also auto-scans unread job-related emails and runs job matching.
+
+### 6. Jobmatch CLI (Email File Optional)
+```bash
+# Option A: scan unread inbox emails and run job matching automatically
+cd src
+python main.py --jobmatch
+
+# Option B: run on a specific job alert email file
+python main.py --jobmatch --email-file ../job_email.txt --resume-file ../resume.txt --prefs-file ../prefs.txt
+```
 
 ## Architecture
 
@@ -108,6 +121,7 @@ clawcampus/
 │   ├── canvas-lms/
 │   ├── outlook-email/
 │   ├── deadline-extract/
+│   ├── job-matching/
 │   ├── food-deals/
 │   └── finance-tracker/
 ├── src/
@@ -121,6 +135,7 @@ clawcampus/
 │   ├── email_drafter.py   # Auto email reply drafter
 │   ├── food_scanner.py    # Food deal scanner
 │   ├── finance_tracker.py # Receipt parser + budget tracker
+│   ├── job_matcher.py     # Job alert ranking + resume tailoring
 │   └── telegram_bot.py    # Telegram bot interface
 └── mock_data/             # Realistic demo data
 ```

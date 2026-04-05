@@ -23,8 +23,22 @@ if "dotenv" not in sys.modules:
     sys.modules["dotenv"] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: None)
 if "requests" not in sys.modules:
     sys.modules["requests"] = types.SimpleNamespace(get=None, post=None)
+if "openai" not in sys.modules:
+    class _DummyOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = types.SimpleNamespace(
+                completions=types.SimpleNamespace(
+                    create=lambda **kwargs: types.SimpleNamespace(
+                        choices=[types.SimpleNamespace(message=types.SimpleNamespace(content=""))]
+                    )
+                )
+            )
+            self.base_url = kwargs.get("base_url", "")
+
+    sys.modules["openai"] = types.SimpleNamespace(OpenAI=_DummyOpenAI)
 
 import outlook_client
+import job_matcher
 
 
 def _seed_memory(path: Path):
@@ -116,6 +130,52 @@ def test_timezone_default_and_override():
             os.environ["APP_TIMEZONE"] = old_tz
 
 
+def test_jobmatch_template_parse_and_fallback():
+    payload = """Here is my master resume/profile:
+Python, SQL, data projects
+
+Here is the email to analyze:
+Data Analyst Intern - Acme
+Software Engineer Intern at Rocket Labs
+
+My goals and preferences:
+- Preferred roles: Data Analyst Intern, Software Engineer Intern
+- Roles I do NOT want: Sales Intern
+"""
+    parsed = job_matcher.parse_jobmatch_sections(payload)
+    assert parsed is not None
+    assert "Python" in parsed.get("master_resume", "")
+    assert "Acme" in parsed.get("email_text", "")
+
+    result = job_matcher.run_job_matching(
+        master_resume=parsed.get("master_resume", ""),
+        email_text=parsed.get("email_text", ""),
+        goals_preferences=parsed.get("goals_preferences", ""),
+        top_k=3,
+    )
+    assert result.get("roles"), "Expected fallback/model stage to extract at least one role"
+    report = job_matcher.format_job_matching_report(result)
+    assert "A. Extracted Job Postings" in report
+    assert "B. Suitability Ranking" in report
+
+
+def test_job_email_detection():
+    job_email = {
+        "subject": "Internship Openings - Apply Now",
+        "from": "careers@example.com",
+        "date": "2026-04-05T09:00:00+08:00",
+        "body": "We are hiring Software Engineer Interns and Data Analyst Interns.",
+    }
+    non_job_email = {
+        "subject": "Your GrabFood receipt",
+        "from": "noreply@grab.com",
+        "date": "2026-04-05T09:00:00+08:00",
+        "body": "Total: $12.29. Order receipt.",
+    }
+    assert job_matcher.is_job_related_email(job_email) is True
+    assert job_matcher.is_job_related_email(non_job_email) is False
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -123,6 +183,8 @@ def main():
         test_weekly_filter(tmpdir)
         test_latest_unread_sort()
         test_timezone_default_and_override()
+        test_jobmatch_template_parse_and_fallback()
+        test_job_email_detection()
 
     print("All regression checks passed.")
 
