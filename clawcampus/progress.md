@@ -52,6 +52,8 @@
 - [x] Added CLI mode: `python main.py --brief --assignment "..."` or `--brief-file ...`
 - [x] Added mock assignment briefs: `mock_data/canvas_assignment_briefs.json`
 - [x] Added skill docs: `skills/assignment-coach/SKILL.md`
+- [x] Added attachment-aware brief ingestion: download Canvas-linked files and include extracted text when possible
+- [x] Disabled silent mock fallback in live mode (`USE_MOCK=false`) for Canvas/Outlook source fetch
 
 ## Test Results
 - Demo produces full output: 11 tasks extracted, 2 food deals, 1 transaction tracked

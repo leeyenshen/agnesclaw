@@ -235,6 +235,7 @@ def format_assignment_study_guide(
     course_name: str = "",
     due_at: str | None = None,
     source_url: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> str:
     """Convert structured analysis into chat-friendly text."""
     lines = []
@@ -251,6 +252,20 @@ def format_assignment_study_guide(
             lines.append(f"Due: {due_at}")
     if source_url:
         lines.append(f"Canvas link: {source_url}")
+    attachment_list = attachments if isinstance(attachments, list) else []
+    if attachment_list:
+        lines.append("")
+        lines.append("Canvas Attachments")
+        for att in attachment_list[:5]:
+            filename = str(att.get("filename", "attachment"))
+            status = str(att.get("status", "unknown"))
+            url = str(att.get("url", "")).strip()
+            local_path = str(att.get("saved_path", "")).strip()
+            lines.append(f"- {filename} ({status})")
+            if url:
+                lines.append(f"  Link: {url}")
+            if local_path:
+                lines.append(f"  Saved: {local_path}")
     lines.append("")
 
     summary = str(analysis.get("assignment_summary", "")).strip()

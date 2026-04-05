@@ -17,7 +17,7 @@ from telegram.ext import (
     filters,
 )
 
-from memory_manager import init_memory, add_tasks, mark_task_done, get_pending_tasks
+from memory_manager import init_memory, add_tasks, replace_synced_tasks, mark_task_done, get_pending_tasks
 from task_extractor import extract_from_text, extract_all_sources
 from canvas_client import (
     get_courses,
@@ -200,7 +200,7 @@ async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sync tasks from Canvas and Outlook."""
     await update.message.reply_text("Syncing Canvas + emails...")
     tasks = extract_all_sources()
-    add_tasks(tasks)
+    replace_synced_tasks(tasks)
     await update.message.reply_text(
         f"Synced! Found {len(tasks)} items.\n\n" + build_task_list()
     )
@@ -314,6 +314,11 @@ async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("\n".join(lines))
             return
         brief_text = assignment_meta.get("brief_text", "")
+        attachments = assignment_meta.get("attachments", [])
+        if isinstance(attachments, list):
+            downloaded = [a for a in attachments if a.get("status") == "downloaded"]
+            if downloaded:
+                await message.reply_text(f"Downloaded {len(downloaded)} attachment(s) from Canvas for analysis.")
 
     if not brief_text.strip():
         await message.reply_text(
@@ -335,6 +340,7 @@ async def cmd_brief(update: Update, context: ContextTypes.DEFAULT_TYPE):
         course_name=assignment_meta.get("course_name", ""),
         due_at=assignment_meta.get("due_at"),
         source_url=assignment_meta.get("source_url"),
+        attachments=assignment_meta.get("attachments"),
     )
     for chunk in _chunk_message(report):
         await message.reply_text(chunk)

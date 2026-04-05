@@ -50,7 +50,7 @@ This is **chain-of-thought reasoning across multiple tasks**, not a single chat 
 | Persistent Memory | ✅ MVP | MEMORY.md with structured task storage |
 | Email Drafting | ✅ MVP | Context-aware reply generation |
 | Job Matching + Resume Tailoring | ✅ MVP | Extract job listings, rank fit, and tailor truthful resume drafts |
-| Assignment Brief Coach | ✅ MVP | Analyze assignment brief and recommend slides + relevant sources |
+| Assignment Brief Coach | ✅ MVP | Pull assignment brief + attachments and recommend slides + relevant sources |
 | Food Deal Scanner | ✅ MVP | Campus deals near your classes |
 | Finance Tracker | ✅ MVP | Receipt parsing + budget alerts |
 | Telegram Bot | ✅ MVP | Full command interface |
@@ -98,6 +98,7 @@ python main.py
 
 **Forward any message** to the bot and it will extract tasks automatically!
 `/sync` also auto-scans unread job-related emails and runs job matching.
+When `USE_MOCK=false`, data clients do not silently fall back to mock datasets.
 
 ### 6. Jobmatch CLI (Email File Optional)
 ```bash

@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from memory_manager import init_memory, add_tasks, add_food_deals, add_transaction
+from memory_manager import init_memory, replace_synced_tasks, add_food_deals, add_transaction
 from task_extractor import extract_all_sources
 from digest_builder import build_digest, build_task_list
 from email_drafter import draft_reply_for_latest
@@ -45,7 +45,7 @@ def run_sync():
     """Sync all sources: Canvas assignments, events, emails → memory."""
     print("Syncing Canvas + Outlook...")
     tasks = extract_all_sources()
-    add_tasks(tasks)
+    replace_synced_tasks(tasks)
     print(f"  Extracted {len(tasks)} tasks.")
 
     # Sync food deals
@@ -207,6 +207,11 @@ def run_brief():
         return
 
     print("Analyzing assignment brief...")
+    attachments = meta.get("attachments", [])
+    if isinstance(attachments, list):
+        downloaded = [a for a in attachments if a.get("status") == "downloaded"]
+        if downloaded:
+            print(f"Downloaded {len(downloaded)} attachment(s) from Canvas for analysis.")
     analysis = analyze_assignment_brief(
         meta.get("brief_text", ""),
         assignment_title=meta.get("title", ""),
@@ -219,6 +224,7 @@ def run_brief():
         course_name=meta.get("course_name", ""),
         due_at=meta.get("due_at"),
         source_url=meta.get("source_url"),
+        attachments=meta.get("attachments"),
     )
     print()
     print(report)

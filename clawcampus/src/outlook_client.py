@@ -1,5 +1,6 @@
 """
-Outlook email client via Maton Gateway with mock fallback.
+Outlook email client via Maton Gateway.
+Mock data is used only when USE_MOCK=true.
 """
 from __future__ import annotations
 
@@ -46,11 +47,13 @@ def _api_get(endpoint: str) -> list[dict] | None:
 
 
 def get_inbox(top: int = 10) -> list[dict]:
-    """Fetch recent inbox emails or return mock data."""
+    """Fetch recent inbox emails, or mock data only in mock mode."""
     result = _api_get(f"/outlook/v1.0/me/mailFolders/Inbox/messages?$top={top}")
     if result is not None:
         return result
-    return _load_mock_emails()
+    if USE_MOCK:
+        return _load_mock_emails()
+    return []
 
 
 def get_unread_emails() -> list[dict]:

@@ -11,6 +11,8 @@ import os
 import sys
 import tempfile
 import types
+import io
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -225,6 +227,144 @@ def test_cross_source_duplicate_task_filtered(tmpdir: Path):
     assert len(tasks) == 1, "Expected near-duplicate cross-source task to be deduplicated"
 
 
+def test_live_mode_disables_mock_fallback():
+    original_canvas_use_mock = canvas_client.USE_MOCK
+    original_canvas_api_get = canvas_client._api_get
+    original_canvas_load_mock = canvas_client._load_mock
+
+    original_outlook_use_mock = outlook_client.USE_MOCK
+    original_outlook_api_get = outlook_client._api_get
+    original_outlook_load_mock = outlook_client._load_mock_emails
+
+    try:
+        canvas_client.USE_MOCK = False
+        canvas_client._api_get = lambda endpoint: None
+        canvas_client._load_mock = lambda filename: (_ for _ in ()).throw(
+            AssertionError("Canvas mock loader should not be used in live mode")
+        )
+        assert canvas_client.get_todo_items() == []
+        assert canvas_client.get_upcoming_events() == []
+        assert canvas_client.get_courses() == []
+
+        outlook_client.USE_MOCK = False
+        outlook_client._api_get = lambda endpoint: None
+        outlook_client._load_mock_emails = lambda: (_ for _ in ()).throw(
+            AssertionError("Outlook mock loader should not be used in live mode")
+        )
+        assert outlook_client.get_inbox() == []
+    finally:
+        canvas_client.USE_MOCK = original_canvas_use_mock
+        canvas_client._api_get = original_canvas_api_get
+        canvas_client._load_mock = original_canvas_load_mock
+
+        outlook_client.USE_MOCK = original_outlook_use_mock
+        outlook_client._api_get = original_outlook_api_get
+        outlook_client._load_mock_emails = original_outlook_load_mock
+
+
+def test_assignment_brief_uses_attachment_text():
+    original_use_mock = canvas_client.USE_MOCK
+    original_find_assignment_todo = canvas_client.find_assignment_todo
+    original_api_get_json = canvas_client._api_get_json
+    original_download_attachments = canvas_client._download_assignment_attachments
+
+    try:
+        canvas_client.USE_MOCK = False
+        canvas_client.find_assignment_todo = lambda query: {
+            "context_name": "CS2040S",
+            "assignment": {
+                "id": 204001,
+                "course_id": 2040,
+                "name": "Lab 5: Graphs & BFS",
+                "due_at": "2026-04-10T15:59:00Z",
+                "html_url": "https://canvas.nus.edu.sg/courses/2040/assignments/204001",
+            },
+        }
+        canvas_client._api_get_json = lambda endpoint: {
+            "id": 204001,
+            "course_id": 2040,
+            "name": "Lab 5: Graphs & BFS",
+            "due_at": "2026-04-10T15:59:00Z",
+            "html_url": "https://canvas.nus.edu.sg/courses/2040/assignments/204001",
+            "description": "<p>Implement BFS and analyze O(V+E).</p>",
+            "attachments": [{"filename": "brief.txt", "url": "https://canvas.nus.edu.sg/files/1/download"}],
+        }
+        canvas_client._download_assignment_attachments = lambda **kwargs: [
+            {
+                "url": "https://canvas.nus.edu.sg/files/1/download",
+                "filename": "brief.txt",
+                "saved_path": "/tmp/brief.txt",
+                "text_excerpt": "Attachment says include complexity proof.",
+                "status": "downloaded",
+            }
+        ]
+
+        brief = canvas_client.get_assignment_brief("lab 5")
+        assert brief is not None
+        assert "Assignment description:" in brief.get("brief_text", "")
+        assert "Attachment (brief.txt) extracted text" in brief.get("brief_text", "")
+        assert len(brief.get("attachments", [])) == 1
+    finally:
+        canvas_client.USE_MOCK = original_use_mock
+        canvas_client.find_assignment_todo = original_find_assignment_todo
+        canvas_client._api_get_json = original_api_get_json
+        canvas_client._download_assignment_attachments = original_download_attachments
+
+
+def test_replace_synced_tasks_replaces_non_manual(tmpdir: Path):
+    memory_manager.MEMORY_PATH = tmpdir / "MEMORY_replace.md"
+    memory_manager.init_memory()
+    memory_manager.add_tasks([
+        {
+            "title": "Old Canvas Task",
+            "course": "CS0001",
+            "due_date": "2026-04-01T10:00:00Z",
+            "urgency": "later",
+            "source": "canvas",
+        },
+        {
+            "title": "Keep Manual Task",
+            "course": None,
+            "due_date": None,
+            "urgency": "info",
+            "source": "manual",
+        },
+    ])
+
+    memory_manager.replace_synced_tasks([
+        {
+            "title": "New Canvas Task",
+            "course": "CS2040S",
+            "due_date": "2026-04-10T15:59:00Z",
+            "urgency": "soon",
+            "source": "canvas",
+        }
+    ])
+
+    titles = {t.get("title") for t in memory_manager.get_all_tasks()}
+    assert "Keep Manual Task" in titles
+    assert "New Canvas Task" in titles
+    assert "Old Canvas Task" not in titles
+
+
+def test_zip_attachment_text_extraction():
+    memory = io.BytesIO()
+    with zipfile.ZipFile(memory, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("brief/requirements.txt", "Need BFS, DFS and complexity analysis.")
+        zf.writestr("brief/notes.md", "Remember to include test cases.")
+        zf.writestr("brief/image.png", b"\x89PNG\r\n\x1a\n")
+
+    zip_bytes = memory.getvalue()
+    extracted = canvas_client._extract_text_from_attachment(
+        zip_bytes,
+        filename="assignment_materials.zip",
+        content_type="application/zip",
+    )
+    assert "[ZIP:brief/requirements.txt]" in extracted
+    assert "Need BFS, DFS and complexity analysis." in extracted
+    assert "Remember to include test cases." in extracted
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -236,6 +376,10 @@ def main():
         test_job_email_detection()
         test_assignment_brief_coach()
         test_cross_source_duplicate_task_filtered(tmpdir)
+        test_live_mode_disables_mock_fallback()
+        test_assignment_brief_uses_attachment_text()
+        test_replace_synced_tasks_replaces_non_manual(tmpdir)
+        test_zip_attachment_text_extraction()
 
     print("All regression checks passed.")
 

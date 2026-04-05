@@ -413,6 +413,63 @@ def add_tasks(tasks: list[dict]):
     _write_memory(content)
 
 
+def replace_synced_tasks(tasks: list[dict]):
+    """
+    Replace non-manual tasks with a fresh sync snapshot.
+    Manual tasks are preserved. Completed state is carried forward when keys match.
+    """
+    content = _read_memory()
+    if not content:
+        init_memory()
+        content = _read_memory()
+
+    existing_section = _get_section_content(content, SECTION_TASKS)
+    existing_tasks, _ = _parse_json_section(existing_section, kind="task")
+
+    preserved_manual = [
+        task for task in existing_tasks if str(task.get("source", "")).strip().lower() == "manual"
+    ]
+    done_by_key = {
+        _task_key(task): task
+        for task in existing_tasks
+        if task.get("done") and task.get("title")
+    }
+
+    refreshed = []
+    for raw_task in tasks:
+        if not isinstance(raw_task, dict):
+            continue
+        task = _normalize_task(raw_task)
+        title = task.get("title")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        if _is_low_quality_task(task):
+            continue
+
+        old = done_by_key.get(_task_key(task))
+        if old and old.get("done"):
+            task["done"] = True
+            if old.get("done_at"):
+                task["done_at"] = old.get("done_at")
+
+        duplicate = False
+        for existing in refreshed:
+            if _is_similar_task(task, existing):
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        refreshed.append(task)
+
+    merged = preserved_manual + refreshed
+    merged, _ = _dedup_tasks(merged)
+
+    new_section = _serialize_json_section(merged)
+    content = _replace_section_content(content, SECTION_TASKS, new_section)
+    content = _update_timestamp(content)
+    _write_memory(content)
+
+
 def get_all_tasks() -> list[dict]:
     """Read all tasks from MEMORY.md."""
     content = _read_memory()
