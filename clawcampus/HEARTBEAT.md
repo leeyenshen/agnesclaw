@@ -1,7 +1,7 @@
 # Morning Digest — Runs daily at 07:30 SGT
 
 1. Fetch new Canvas assignments and events (last 24h)
-2. Fetch unread Outlook emails
+2. Fetch unread Gmail emails via Gmail API (or mock_data/emails.json if USE_MOCK=true)
 3. Run task extraction on any new items
 4. Update MEMORY.md with extracted tasks
 5. Check for tasks due today or tomorrow → mark urgent

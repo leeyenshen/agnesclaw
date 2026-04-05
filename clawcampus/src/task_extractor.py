@@ -6,12 +6,21 @@ Falls back to rule-based extraction if Agnes API is unavailable.
 from __future__ import annotations
 
 import json
+
 import re
 
 from agnes_client import call_agnes_pro, extract_json
 from canvas_client import get_todo_items, get_upcoming_events
-from outlook_client import get_unread_emails
+
 from time_utils import now_local, parse_iso_datetime
+
+import os
+from datetime import datetime, timezone
+
+from agnes_client import call_agnes_pro, extract_json
+from canvas_client import get_todo_items, get_upcoming_events
+from gmail_client import get_service, fetch_recent_emails, fetch_unread_emails
+
 
 EXTRACTION_PROMPT = """You are a student task extraction agent. Given the following text from a student's email or assignment page, extract ALL actionable items.
 
@@ -179,15 +188,12 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
 
 def extract_from_email(email: dict) -> list[dict]:
     """Extract tasks from a single email dict."""
-    text = f"Subject: {email.get('subject', '')}\nFrom: {email.get('from', '')}\nDate: {email.get('date', '')}\n\n{email.get('body', '')}"
-    tasks = extract_from_text(text, source="email")
-    cleaned = []
-    for task in tasks:
-        title = str(task.get("title", "")).strip()
-        if _is_low_quality_email_title(title):
-            continue
-        cleaned.append(task)
-    return cleaned
+    text = (
+        f"Subject: {email.get('subject', '')}\n"
+        f"From: {email.get('sender', '')}\n"
+        f"{email.get('body', '')}"
+    )
+    return extract_from_text(text, source="email")
 
 
 def extract_from_canvas_todo(item: dict) -> dict:
@@ -264,33 +270,28 @@ def extract_all_sources() -> list[dict]:
         tasks.append(extract_from_canvas_event(event))
 
     # Unread emails
-    for email in get_unread_emails():
+    service = get_service()
+    emails = fetch_unread_emails(service, max_results=10)
+    for email in emails:
         tasks.extend(extract_from_email(email))
 
     return _deduplicate_tasks(tasks)
 
 
 if __name__ == "__main__":
-    print("=== Task Extractor Test (Canvas + mock data) ===\n")
+    os.environ["USE_MOCK"] = "false"
 
-    # Test Canvas extraction (no Agnes needed)
-    todos = get_todo_items()
-    print(f"Canvas todos → {len(todos)} items:")
-    for item in todos:
-        task = extract_from_canvas_todo(item)
-        print(f"  [{task['urgency'].upper():6s}] {task['title']} — due {task['due_date']}")
-
-    events = get_upcoming_events()
-    print(f"\nCanvas events → {len(events)} items:")
-    for ev in events:
-        task = extract_from_canvas_event(ev)
-        print(f"  [{task['urgency'].upper():6s}] {task['title']} @ {task.get('location', 'TBA')}")
-
-    # Test email extraction (needs Agnes or falls back)
-    print("\nEmail extraction (may use Agnes or fallback):")
-    emails = get_unread_emails()
+    service = get_service()
+    emails = fetch_recent_emails(service, max_results=5)
     for email in emails:
-        print(f"\n  Processing: {email['subject']}")
+        print("--- EMAIL ---")
+        print(f"From: {email.get('sender', '')}")
+        print(f"Subject: {email.get('subject', '')}")
+        print()
+        print("--- EXTRACTED TASKS ---")
         tasks = extract_from_email(email)
-        for t in tasks:
-            print(f"    [{t['urgency'].upper():6s}] {t['title']}")
+        if tasks:
+            print(json.dumps(tasks, indent=2))
+        else:
+            print("No tasks extracted")
+        print()
