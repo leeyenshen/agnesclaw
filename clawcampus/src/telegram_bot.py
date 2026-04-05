@@ -75,7 +75,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_sync(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sync tasks from Canvas and Outlook."""
+    """Sync tasks from Canvas and Gmail."""
     await update.message.reply_text("Syncing Canvas + emails...")
     tasks = extract_all_sources()
     add_tasks(tasks)

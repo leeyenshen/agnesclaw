@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from agnes_client import call_agnes_pro, extract_json
 from canvas_client import get_todo_items, get_upcoming_events
-from outlook_client import get_unread_emails
+from gmail_client import get_service, fetch_unread_emails
 
 EXTRACTION_PROMPT = """You are a student task extraction agent. Given the following text from a student's email or assignment page, extract ALL actionable items.
 
@@ -69,7 +69,11 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
 
 def extract_from_email(email: dict) -> list[dict]:
     """Extract tasks from a single email dict."""
-    text = f"Subject: {email.get('subject', '')}\nFrom: {email.get('from', '')}\nDate: {email.get('date', '')}\n\n{email.get('body', '')}"
+    text = (
+        f"Subject: {email.get('subject', '')}\n"
+        f"From: {email.get('sender', '')}\n"
+        f"{email.get('body', '')}"
+    )
     return extract_from_text(text, source="email")
 
 
@@ -149,7 +153,9 @@ def extract_all_sources() -> list[dict]:
         tasks.append(extract_from_canvas_event(event))
 
     # Unread emails
-    for email in get_unread_emails():
+    service = get_service()
+    emails = fetch_unread_emails(service, max_results=10)
+    for email in emails:
         tasks.extend(extract_from_email(email))
 
     # Deduplicate by title (simple approach)
@@ -186,7 +192,8 @@ if __name__ == "__main__":
 
     # Test email extraction (needs Agnes or falls back)
     print("\nEmail extraction (may use Agnes or fallback):")
-    emails = get_unread_emails()
+    service = get_service()
+    emails = fetch_unread_emails(service, max_results=10)
     for email in emails:
         print(f"\n  Processing: {email['subject']}")
         tasks = extract_from_email(email)

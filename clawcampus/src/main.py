@@ -5,7 +5,7 @@ Entry point: bootstraps the OpenClaw agent, initializes memory, and starts the T
 
 Usage:
     python main.py              # Start Telegram bot (or mock demo if no token)
-    python main.py --sync       # Run one-time sync from Canvas + Outlook
+    python main.py --sync       # Run one-time sync from Canvas + Gmail
     python main.py --digest     # Generate and print daily digest
     python main.py --demo       # Run full demo flow with mock data
 """
@@ -26,13 +26,13 @@ from digest_builder import build_digest, build_task_list
 from email_drafter import draft_reply_for_latest
 from food_scanner import sync_deals_to_memory, get_todays_deals_message
 from finance_tracker import parse_transaction_email, get_spending_summary
-from outlook_client import get_inbox
+from gmail_client import get_service, fetch_recent_emails
 from telegram_bot import run_bot
 
 
 def run_sync():
     """Sync all sources: Canvas assignments, events, emails → memory."""
-    print("Syncing Canvas + Outlook...")
+    print("Syncing Canvas + Gmail...")
     tasks = extract_all_sources()
     add_tasks(tasks)
     print(f"  Extracted {len(tasks)} tasks.")
@@ -43,7 +43,8 @@ def run_sync():
 
     # Parse financial transactions from emails
     tx_count = 0
-    for email in get_inbox():
+    service = get_service()
+    for email in fetch_recent_emails(service, max_results=10):
         tx = parse_transaction_email(email)
         if tx:
             add_transaction(tx)
@@ -69,7 +70,7 @@ def run_demo():
     init_memory()
 
     # Step 2: Sync all sources
-    print("\n[2/5] Syncing Canvas + Outlook...")
+    print("\n[2/5] Syncing Canvas + Gmail...")
     tasks = run_sync()
 
     # Step 3: Daily digest
