@@ -11,7 +11,7 @@ import html
 import re
 import zipfile
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, quote_plus
 
 import requests
 from dotenv import load_dotenv
@@ -31,6 +31,7 @@ MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_CHARS_PER_ATTACHMENT = 12000
 MAX_ZIP_ENTRIES_TO_SCAN = 20
 MAX_ZIP_ENTRY_BYTES = 2 * 1024 * 1024
+MAX_FILE_SEARCH_CANDIDATES = 4
 TEXT_ATTACHMENT_EXTENSIONS = {
     ".txt",
     ".md",
@@ -50,6 +51,25 @@ TEXT_ATTACHMENT_EXTENSIONS = {
     ".xml",
 }
 DOCX_EXTENSION = ".docx"
+TOKEN_STOPWORDS = {
+    "the",
+    "for",
+    "and",
+    "to",
+    "of",
+    "a",
+    "an",
+    "is",
+    "on",
+    "in",
+    "with",
+    "task",
+    "assignment",
+    "homework",
+    "work",
+    "submission",
+    "submit",
+}
 
 
 def _load_mock(filename: str) -> list[dict]:
@@ -157,6 +177,179 @@ def _load_mock_briefs() -> list[dict]:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     return data if isinstance(data, list) else []
+
+
+def _extract_course_code(text: str | None) -> str:
+    if not isinstance(text, str):
+        return ""
+    match = re.search(r"\b([A-Za-z]{2,4}\d{4}[A-Za-z]?)\b", text)
+    return match.group(1).upper() if match else ""
+
+
+def _tokenize(text: str | None) -> set[str]:
+    if not isinstance(text, str):
+        return set()
+    words = re.findall(r"[A-Za-z0-9]+", text.lower())
+    return {w for w in words if w and w not in TOKEN_STOPWORDS}
+
+
+def _query_variants(query_text: str | None, assignment_title: str | None = None) -> list[str]:
+    seeds = [str(query_text or "").strip(), str(assignment_title or "").strip()]
+    variants: list[str] = []
+    seen = set()
+
+    for seed in seeds:
+        if not seed:
+            continue
+        candidates = {seed}
+
+        # Remove module code hint, e.g. "CS4243 tutorial 10" -> "tutorial 10"
+        candidates.add(re.sub(r"\b[A-Za-z]{2,4}\d{4}[A-Za-z]?\b", " ", seed, flags=re.I))
+
+        # Remove generic submission words to improve file lookup hits.
+        candidates.add(re.sub(r"\b(submission|submit|assignment|homework)\b", " ", seed, flags=re.I))
+
+        # Normalize whitespace/punctuation.
+        normalized = re.sub(r"[^A-Za-z0-9]+", " ", seed).strip()
+        if normalized:
+            candidates.add(normalized)
+
+        # Merge number spacing: "tutorial 10" -> "tutorial10"
+        merged_num = re.sub(r"\b([A-Za-z]+)\s+(\d{1,3})\b", r"\1\2", seed, flags=re.I)
+        candidates.add(merged_num)
+
+        for cand in candidates:
+            cand = " ".join(cand.split())
+            if not cand:
+                continue
+            key = cand.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            variants.append(cand)
+
+    return variants[:6]
+
+
+def _score_similarity(query_text: str, candidate_text: str) -> float:
+    q = _tokenize(query_text)
+    c = _tokenize(candidate_text)
+    if not q or not c:
+        return 0.0
+    overlap = len(q & c)
+    if overlap == 0:
+        return 0.0
+    precision = overlap / len(c)
+    recall = overlap / len(q)
+    return (2 * precision * recall) / max(1e-9, (precision + recall))
+
+
+def _score_todo_item(item: dict, query: str, *, course_hint: str = "") -> float:
+    assignment = item.get("assignment", {})
+    title = str(assignment.get("name", ""))
+    query_norm = query.strip().lower()
+    title_norm = title.strip().lower()
+
+    score = 0.0
+    if query_norm and query_norm in title_norm:
+        score += 1.2
+    score += _score_similarity(query, title)
+
+    context = str(item.get("context_name", ""))
+    context_code = _extract_course_code(context)
+    if course_hint:
+        if context_code == course_hint:
+            score += 0.8
+        elif course_hint in context.upper():
+            score += 0.5
+        else:
+            score -= 0.4
+
+    due = assignment.get("due_at")
+    if isinstance(due, str) and due:
+        score += 0.05
+
+    return score
+
+
+def _resolve_course_id_from_hint(course_hint: str) -> int | str | None:
+    if not course_hint:
+        return None
+
+    # Fast path: infer from current todo list context names.
+    for item in get_todo_items():
+        context = str(item.get("context_name", ""))
+        code = _extract_course_code(context)
+        if code == course_hint:
+            assignment = item.get("assignment", {})
+            cid = assignment.get("course_id")
+            if cid:
+                return cid
+
+    # Broader path: use courses endpoint in live mode.
+    courses = get_courses()
+    for course in courses:
+        name = str(course.get("name", ""))
+        code = _extract_course_code(name)
+        if code == course_hint or course_hint in name.upper():
+            cid = course.get("id")
+            if cid:
+                return cid
+    return None
+
+
+def _search_course_files(course_id: int | str, query_text: str, *, limit: int = MAX_FILE_SEARCH_CANDIDATES) -> list[dict]:
+    """
+    Search course files and return likely matches for the assignment query.
+    """
+    if not course_id or USE_MOCK:
+        return []
+
+    pool: list[dict] = []
+    variants = _query_variants(query_text)
+
+    for variant in variants:
+        endpoint = f"/api/v1/courses/{course_id}/files?search_term={quote_plus(variant)}&per_page=50"
+        data = _api_get_json(endpoint)
+        if isinstance(data, list):
+            pool.extend(item for item in data if isinstance(item, dict))
+
+    # Broader fallback: scan first page of course files without search term
+    # when search results are empty or weak.
+    if not pool:
+        fallback = _api_get_json(f"/api/v1/courses/{course_id}/files?per_page=100")
+        if isinstance(fallback, list):
+            pool.extend(item for item in fallback if isinstance(item, dict))
+
+    scored = []
+    query_for_score = variants[0] if variants else str(query_text or "")
+    seen_urls = set()
+    for item in pool:
+        name = str(item.get("display_name") or item.get("filename") or "")
+        if not name:
+            continue
+        score = max(_score_similarity(v, name) for v in (variants or [query_for_score]))
+        # Light boost for tutorial/lab/project keywords.
+        lowered = name.lower()
+        if any(k in lowered for k in ("tutorial", "lab", "project", "assignment", "brief", "spec")):
+            score += 0.1
+        if score < 0.2:
+            continue
+        file_url = item.get("url") or item.get("preview_url")
+        if not isinstance(file_url, str) or not file_url.strip():
+            continue
+        absolute_url = urljoin(CANVAS_URL, file_url)
+        if absolute_url in seen_urls:
+            continue
+        seen_urls.add(absolute_url)
+        scored.append((score, {
+            "url": absolute_url,
+            "filename": str(item.get("display_name") or item.get("filename") or Path(urlparse(file_url).path).name or "course_file"),
+            "source": "course_file_search",
+        }))
+
+    scored.sort(key=lambda entry: entry[0], reverse=True)
+    return [entry[1] for entry in scored[: max(1, limit)]]
 
 
 def _safe_filename(name: str) -> str:
@@ -306,7 +499,14 @@ def _extract_attachment_links(description_html: str) -> list[str]:
     return normalized
 
 
-def _collect_attachment_candidates(details: dict, description_html: str) -> list[dict]:
+def _collect_attachment_candidates(
+    details: dict,
+    description_html: str,
+    *,
+    course_id: int | str | None = None,
+    query_text: str = "",
+    assignment_title: str = "",
+) -> list[dict]:
     candidates = []
     seen = set()
 
@@ -339,6 +539,16 @@ def _collect_attachment_candidates(details: dict, description_html: str) -> list
             "source": "description_link",
         })
 
+    # Fallback: search the course file repository by fuzzy title/query.
+    if course_id:
+        for q in _query_variants(query_text, assignment_title):
+            for file_item in _search_course_files(course_id, q, limit=MAX_FILE_SEARCH_CANDIDATES):
+                url = str(file_item.get("url", ""))
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                candidates.append(file_item)
+
     return candidates[:MAX_ATTACHMENTS_PER_BRIEF]
 
 
@@ -346,13 +556,21 @@ def _download_assignment_attachments(
     *,
     assignment_id: int | str | None,
     course_id: int | str | None,
+    query_text: str,
+    assignment_title: str,
     details: dict,
     description_html: str,
 ) -> list[dict]:
     if USE_MOCK:
         return []
 
-    candidates = _collect_attachment_candidates(details, description_html)
+    candidates = _collect_attachment_candidates(
+        details,
+        description_html,
+        course_id=course_id,
+        query_text=query_text,
+        assignment_title=assignment_title,
+    )
     if not candidates:
         return []
 
@@ -437,6 +655,7 @@ def find_assignment_todo(query: str) -> dict | None:
     query_norm = str(query or "").strip().lower()
     if not query_norm:
         return None
+    course_hint = _extract_course_code(query)
 
     todos = get_todo_items()
     for item in todos:
@@ -445,14 +664,43 @@ def find_assignment_todo(query: str) -> dict | None:
         if assignment_id and query_norm == assignment_id:
             return item
 
-    # Fuzzy match on assignment name
+    # Fast substring match on assignment name, with course-hint preference.
+    best_substring = None
+    best_substring_score = -1.0
     for item in todos:
         assignment = item.get("assignment", {})
         title = str(assignment.get("name", "")).strip().lower()
         if query_norm and query_norm in title:
-            return item
+            score = _score_todo_item(item, query, course_hint=course_hint)
+            if score > best_substring_score:
+                best_substring_score = score
+                best_substring = item
+    if best_substring is not None:
+        return best_substring
 
-    return None
+    # General fuzzy match by token similarity + module hint.
+    best_item = None
+    best_score = -1.0
+    second_score = -1.0
+    for item in todos:
+        score = _score_todo_item(item, query, course_hint=course_hint)
+        if score > best_score:
+            second_score = best_score
+            best_score = score
+            best_item = item
+        elif score > second_score:
+            second_score = score
+
+    if best_item is None:
+        return None
+
+    # Require minimum confidence and avoid ambiguous ties.
+    if best_score < 0.45:
+        return None
+    if second_score > 0 and (best_score - second_score) < 0.08:
+        return None
+
+    return best_item
 
 
 def get_assignment_brief(assignment_query: str) -> dict | None:
@@ -469,6 +717,7 @@ def get_assignment_brief(assignment_query: str) -> dict | None:
     if not query_norm:
         return None
 
+    course_hint = _extract_course_code(query_norm)
     todo_item = find_assignment_todo(query_norm)
     assignment = todo_item.get("assignment", {}) if todo_item else {}
     assignment_id = assignment.get("id")
@@ -477,6 +726,35 @@ def get_assignment_brief(assignment_query: str) -> dict | None:
     course_name = todo_item.get("context_name") if todo_item else None
     due_at = assignment.get("due_at")
     source_url = assignment.get("html_url")
+
+    # If todo list doesn't provide a match, use module hint to search assignments.
+    if (not assignment_id or not course_id) and course_hint and not USE_MOCK:
+        hinted_course_id = _resolve_course_id_from_hint(course_hint)
+        if hinted_course_id:
+            assignment_search = _api_get_json(
+                f"/api/v1/courses/{hinted_course_id}/assignments?search_term={quote_plus(query_norm)}&per_page=50"
+            )
+            if isinstance(assignment_search, list) and assignment_search:
+                best = None
+                best_score = -1.0
+                for item in assignment_search:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name", ""))
+                    score = _score_similarity(query_norm, name)
+                    if query_norm and query_norm.lower() in name.lower():
+                        score += 0.6
+                    if score > best_score:
+                        best_score = score
+                        best = item
+                if isinstance(best, dict) and best_score >= 0.35:
+                    assignment_id = best.get("id")
+                    course_id = best.get("course_id") or hinted_course_id
+                    title = best.get("name") or title
+                    due_at = best.get("due_at") or due_at
+                    source_url = best.get("html_url") or source_url
+                    if not course_name:
+                        course_name = str(best.get("course_name") or course_hint)
 
     if assignment_id and course_id:
         # Real Canvas assignment endpoint often includes HTML description and attachments.
@@ -487,6 +765,8 @@ def get_assignment_brief(assignment_query: str) -> dict | None:
             attachments = _download_assignment_attachments(
                 assignment_id=assignment_id,
                 course_id=course_id,
+                query_text=query_norm,
+                assignment_title=str(details.get("name") or title or ""),
                 details=details,
                 description_html=description_html,
             )

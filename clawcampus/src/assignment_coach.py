@@ -39,6 +39,60 @@ def _contains(text: str, *keywords: str) -> bool:
     return any(k in lower for k in keywords)
 
 
+def _has_actionable_brief_text(brief_text: str) -> bool:
+    text = str(brief_text or "").strip()
+    if not text:
+        return False
+    lower = text.lower()
+
+    # Explicit placeholder emitted by canvas_client when only metadata is available.
+    if "no full brief text was retrieved" in lower:
+        return False
+
+    # If attachments are present but no extracted text exists, we still lack content context.
+    if "attachment (" in lower and "extracted text:" not in lower and "assignment description:" not in lower:
+        return False
+
+    # Very short stubs are usually non-actionable.
+    if len(text) < 80:
+        return False
+
+    return True
+
+
+def _missing_brief_analysis(
+    *,
+    assignment_title: str = "",
+    course_name: str = "",
+    due_at: str | None = None,
+) -> dict:
+    due_note = ""
+    due = parse_iso_datetime(due_at)
+    if due:
+        local_due = due.astimezone(now_local().tzinfo)
+        due_note = local_due.strftime("%a %d %b %I:%M %p")
+
+    return {
+        "assignment_summary": "Assignment matched, but full brief content was not retrievable from Canvas text/attachments.",
+        "required_topics": [],
+        "recommended_slides": [],
+        "recommended_sources": [],
+        "deliverables": [
+            "Open the Canvas assignment page and confirm exact requirements.",
+            "Identify required submission format, rubric, and allowed resources.",
+        ],
+        "gaps_or_unknowns": [
+            "Exact task instructions are missing from retrieved content.",
+            "Unable to infer precise lecture slide topics without brief details.",
+        ] + ([f"Due date interpreted as {due_note} (local time)."] if due_note else []),
+        "study_plan": [
+            "Open the Canvas link and read the full brief end-to-end.",
+            "Download any referenced files and rerun /brief if needed.",
+            "Extract explicit deliverables and grading criteria before studying.",
+        ],
+    }
+
+
 def _fallback_analysis(
     brief_text: str,
     *,
@@ -189,8 +243,14 @@ def analyze_assignment_brief(
 ) -> dict:
     """Return structured study guidance from an assignment brief."""
     if not isinstance(brief_text, str) or not brief_text.strip():
-        return _fallback_analysis(
-            "",
+        return _missing_brief_analysis(
+            assignment_title=assignment_title,
+            course_name=course_name,
+            due_at=due_at,
+        )
+
+    if not _has_actionable_brief_text(brief_text):
+        return _missing_brief_analysis(
             assignment_title=assignment_title,
             course_name=course_name,
             due_at=due_at,

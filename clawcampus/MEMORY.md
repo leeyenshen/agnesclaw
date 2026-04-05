@@ -1,12 +1,12 @@
 # ClawCampus Memory
 
-Last updated: 2026-04-05T05:35:04.548960+00:00
+Last updated: 2026-04-05T05:50:23.494864+00:00
 
 ## Tasks
 - {"title": "Sync", "course": null, "due_date": null, "type": "admin", "urgency": "info", "source": "manual", "raw_snippet": "sync", "extracted_at": "2026-04-05T13:35:01.898468+08:00"}
-- {"title": "Lab 3", "course": "CS4243 Computer Vision and Pattern Recognition [2520]", "due_date": "2026-04-03T14:00:00Z", "type": "assignment", "urgency": "urgent", "source": "canvas", "raw_snippet": "Lab 3 — CS4243 Computer Vision and Pattern Recognition [2520]", "extracted_at": "2026-04-05T13:35:03.321939+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85582/assignments/243693"}
-- {"title": "TUTORIAL 10 SUBMISSION", "course": "CS3264 Foundations of Machine Learning [2520]", "due_date": "2026-04-06T08:00:00Z", "type": "assignment", "urgency": "urgent", "source": "canvas", "raw_snippet": "TUTORIAL 10 SUBMISSION — CS3264 Foundations of Machine Learning [2520]", "extracted_at": "2026-04-05T13:35:03.321982+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85514/assignments/246824"}
-- {"title": "Tutorial 10 - week 12", "course": "CS3263 Foundations of Artificial Intelligence [2520]", "due_date": "2026-04-10T10:00:00Z", "type": "assignment", "urgency": "soon", "source": "canvas", "raw_snippet": "Tutorial 10 - week 12 — CS3263 Foundations of Artificial Intelligence [2520]", "extracted_at": "2026-04-05T13:35:03.321999+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85509/assignments/229447"}
+- {"title": "Lab 3", "course": "CS4243 Computer Vision and Pattern Recognition [2520]", "due_date": "2026-04-03T14:00:00Z", "type": "assignment", "urgency": "urgent", "source": "canvas", "raw_snippet": "Lab 3 — CS4243 Computer Vision and Pattern Recognition [2520]", "extracted_at": "2026-04-05T13:50:21.550695+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85582/assignments/243693"}
+- {"title": "TUTORIAL 10 SUBMISSION", "course": "CS3264 Foundations of Machine Learning [2520]", "due_date": "2026-04-06T08:00:00Z", "type": "assignment", "urgency": "urgent", "source": "canvas", "raw_snippet": "TUTORIAL 10 SUBMISSION — CS3264 Foundations of Machine Learning [2520]", "extracted_at": "2026-04-05T13:50:21.550706+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85514/assignments/246824"}
+- {"title": "Tutorial 10 - week 12", "course": "CS3263 Foundations of Artificial Intelligence [2520]", "due_date": "2026-04-10T10:00:00Z", "type": "assignment", "urgency": "soon", "source": "canvas", "raw_snippet": "Tutorial 10 - week 12 — CS3263 Foundations of Artificial Intelligence [2520]", "extracted_at": "2026-04-05T13:50:21.550711+08:00", "canvas_url": "https://canvas.nus.edu.sg/courses/85509/assignments/229447"}
 
 ## Courses
 

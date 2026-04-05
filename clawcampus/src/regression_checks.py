@@ -365,6 +365,88 @@ def test_zip_attachment_text_extraction():
     assert "Remember to include test cases." in extracted
 
 
+def test_find_assignment_todo_course_aware_fuzzy():
+    original_get_todo_items = canvas_client.get_todo_items
+    try:
+        canvas_client.get_todo_items = lambda: [
+            {
+                "context_name": "CS4243 Computer Vision and Pattern Recognition",
+                "assignment": {
+                    "id": 1001,
+                    "course_id": 4243,
+                    "name": "Tutorial 9: Object Detection",
+                    "due_at": "2026-04-20T10:00:00Z",
+                },
+            },
+            {
+                "context_name": "CS4243 Computer Vision and Pattern Recognition",
+                "assignment": {
+                    "id": 1002,
+                    "course_id": 4243,
+                    "name": "Tutorial 10 - Image Segmentation",
+                    "due_at": "2026-04-25T10:00:00Z",
+                },
+            },
+            {
+                "context_name": "CS2105 Introduction to Computer Networks",
+                "assignment": {
+                    "id": 2001,
+                    "course_id": 2105,
+                    "name": "Tutorial 10 - Routing",
+                    "due_at": "2026-04-21T10:00:00Z",
+                },
+            },
+        ]
+        item = canvas_client.find_assignment_todo("CS4243 tutorial 10")
+        assert item is not None
+        assert item.get("assignment", {}).get("id") == 1002
+    finally:
+        canvas_client.get_todo_items = original_get_todo_items
+
+
+def test_collect_attachment_candidates_includes_course_file_search():
+    original_search = canvas_client._search_course_files
+    try:
+        canvas_client._search_course_files = lambda course_id, query_text, limit=4: [
+            {
+                "url": "https://canvas.nus.edu.sg/files/987/download",
+                "filename": "CS4243_Tutorial10_Brief.zip",
+                "source": "course_file_search",
+            }
+        ]
+        candidates = canvas_client._collect_attachment_candidates(
+            details={"attachments": []},
+            description_html="",
+            course_id=4243,
+            query_text="tutorial 10",
+            assignment_title="Tutorial 10",
+        )
+        assert candidates, "Expected at least one candidate from course file search"
+        assert candidates[0].get("source") == "course_file_search"
+        assert "Tutorial10" in candidates[0].get("filename", "")
+    finally:
+        canvas_client._search_course_files = original_search
+
+
+def test_missing_brief_analysis_is_conservative():
+    placeholder = (
+        "Assignment: Tutorial 10 Submission\n"
+        "Course: CS3264 Foundations of Machine Learning\n"
+        "Due: 2026-04-06T08:00:00Z\n"
+        "No full brief text was retrieved. Use the Canvas URL for full instructions."
+    )
+    result = assignment_coach.analyze_assignment_brief(
+        placeholder,
+        assignment_title="Tutorial 10 Submission",
+        course_name="CS3264 Foundations of Machine Learning",
+        due_at="2026-04-06T08:00:00Z",
+    )
+    assert result.get("recommended_slides") == []
+    assert result.get("recommended_sources") == []
+    gaps = " ".join(result.get("gaps_or_unknowns", []))
+    assert "missing" in gaps.lower() or "unable" in gaps.lower()
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -380,6 +462,9 @@ def main():
         test_assignment_brief_uses_attachment_text()
         test_replace_synced_tasks_replaces_non_manual(tmpdir)
         test_zip_attachment_text_extraction()
+        test_find_assignment_todo_course_aware_fuzzy()
+        test_collect_attachment_candidates_includes_course_file_search()
+        test_missing_brief_analysis_is_conservative()
 
     print("All regression checks passed.")
 
