@@ -17,8 +17,8 @@ _client = OpenAI(
     api_key=os.environ.get("AGNES_API_KEY", "sk-placeholder"),
 )
 
-MODEL_PRO = "agnes/agnes-1.5-pro"
-MODEL_LITE = "agnes/agnes-1.5-lite"
+MODEL_PRO = "agnes-1.5-pro"
+MODEL_LITE = "agnes-1.5-lite"
 
 
 def call_agnes_pro(messages: list[dict], temperature: float = 0.3) -> str:

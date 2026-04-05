@@ -6,11 +6,12 @@ Falls back to rule-based extraction if Agnes API is unavailable.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from agnes_client import call_agnes_pro, extract_json
 from canvas_client import get_todo_items, get_upcoming_events
-from gmail_client import get_service, fetch_unread_emails
+from gmail_client import get_service, fetch_recent_emails, fetch_unread_emails
 
 EXTRACTION_PROMPT = """You are a student task extraction agent. Given the following text from a student's email or assignment page, extract ALL actionable items.
 
@@ -175,27 +176,19 @@ def extract_all_sources() -> list[dict]:
 
 
 if __name__ == "__main__":
-    print("=== Task Extractor Test (Canvas + mock data) ===\n")
+    os.environ["USE_MOCK"] = "false"
 
-    # Test Canvas extraction (no Agnes needed)
-    todos = get_todo_items()
-    print(f"Canvas todos → {len(todos)} items:")
-    for item in todos:
-        task = extract_from_canvas_todo(item)
-        print(f"  [{task['urgency'].upper():6s}] {task['title']} — due {task['due_date']}")
-
-    events = get_upcoming_events()
-    print(f"\nCanvas events → {len(events)} items:")
-    for ev in events:
-        task = extract_from_canvas_event(ev)
-        print(f"  [{task['urgency'].upper():6s}] {task['title']} @ {task.get('location', 'TBA')}")
-
-    # Test email extraction (needs Agnes or falls back)
-    print("\nEmail extraction (may use Agnes or fallback):")
     service = get_service()
-    emails = fetch_unread_emails(service, max_results=10)
+    emails = fetch_recent_emails(service, max_results=5)
     for email in emails:
-        print(f"\n  Processing: {email['subject']}")
+        print("--- EMAIL ---")
+        print(f"From: {email.get('sender', '')}")
+        print(f"Subject: {email.get('subject', '')}")
+        print()
+        print("--- EXTRACTED TASKS ---")
         tasks = extract_from_email(email)
-        for t in tasks:
-            print(f"    [{t['urgency'].upper():6s}] {t['title']}")
+        if tasks:
+            print(json.dumps(tasks, indent=2))
+        else:
+            print("No tasks extracted")
+        print()
