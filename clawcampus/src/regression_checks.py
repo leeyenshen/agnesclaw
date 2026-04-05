@@ -447,6 +447,29 @@ def test_missing_brief_analysis_is_conservative():
     assert "missing" in gaps.lower() or "unable" in gaps.lower()
 
 
+def test_default_resume_file_relative_env_path(tmpdir: Path):
+    original_default_profile_path = job_matcher.DEFAULT_PROFILE_PATH
+    old_env = os.environ.get("MASTER_RESUME_FILE")
+    try:
+        project_root = tmpdir / "project"
+        project_root.mkdir(parents=True, exist_ok=True)
+        user_md = project_root / "USER.md"
+        user_md.write_text("fallback user profile", encoding="utf-8")
+        resume_path = project_root / "resume_master.txt"
+        resume_path.write_text("primary resume profile", encoding="utf-8")
+
+        job_matcher.DEFAULT_PROFILE_PATH = user_md
+        os.environ["MASTER_RESUME_FILE"] = "resume_master.txt"
+        loaded = job_matcher.load_default_profile_text()
+        assert loaded == "primary resume profile"
+    finally:
+        job_matcher.DEFAULT_PROFILE_PATH = original_default_profile_path
+        if old_env is None:
+            os.environ.pop("MASTER_RESUME_FILE", None)
+        else:
+            os.environ["MASTER_RESUME_FILE"] = old_env
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
@@ -465,6 +488,7 @@ def main():
         test_find_assignment_todo_course_aware_fuzzy()
         test_collect_attachment_candidates_includes_course_file_search()
         test_missing_brief_analysis_is_conservative()
+        test_default_resume_file_relative_env_path(tmpdir)
 
     print("All regression checks passed.")
 

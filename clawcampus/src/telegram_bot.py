@@ -6,6 +6,7 @@ Also handles forwarded messages → extract tasks.
 
 import os
 import logging
+import re
 from dotenv import load_dotenv
 
 from telegram import BotCommand, Update
@@ -49,6 +50,60 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clawcampus")
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+
+_JOBMATCH_KEYWORD_EXPANSIONS = {
+    "swe": {"software engineer", "software", "engineer", "sde"},
+    "sde": {"software engineer", "software", "engineer", "swe"},
+    "ml": {"machine learning", "ml", "ai"},
+    "pm": {"product manager", "product"},
+}
+
+
+def _tokenize_keywords(text: str) -> list[str]:
+    tokens = re.findall(r"[a-z0-9]+", (text or "").lower())
+    stop = {"job", "jobs", "intern", "internship", "role", "roles", "the", "a", "an", "for"}
+    return [t for t in tokens if t and t not in stop]
+
+
+def _keyword_hits(text: str, token: str) -> float:
+    haystack = (text or "").lower()
+    if token in haystack:
+        return 1.0
+    variants = _JOBMATCH_KEYWORD_EXPANSIONS.get(token, set())
+    for variant in variants:
+        if variant in haystack:
+            return 0.8
+    return 0.0
+
+
+def _select_job_email_from_keywords(payload: str) -> dict | None:
+    keywords = _tokenize_keywords(payload)
+    if not keywords:
+        return None
+
+    job_emails = filter_job_related_emails(get_unread_emails())
+    if not job_emails:
+        return None
+
+    best_email = None
+    best_score = 0.0
+    for email in job_emails:
+        subject = str(email.get("subject", ""))
+        sender = str(email.get("from", ""))
+        body = str(email.get("body", ""))
+        combined = f"{subject}\n{sender}\n{body}".lower()
+        score = sum(_keyword_hits(combined, kw) for kw in keywords)
+        if payload.lower() in subject.lower():
+            score += 1.0
+        if score > best_score:
+            best_score = score
+            best_email = email
+
+    # Require at least one meaningful keyword match.
+    if best_score <= 0:
+        return None
+    return best_email
 
 
 def _chunk_message(text: str, limit: int = 3800) -> list[str]:
@@ -393,21 +448,32 @@ async def cmd_jobmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _run_jobmatch_for_inbox_emails(message, announce_if_none=True, max_emails=3)
         return
 
+    default_resume = load_default_profile_text()
     parsed = parse_jobmatch_sections(payload)
     if parsed:
         await _run_jobmatch_and_reply(
             message,
-            master_resume=parsed.get("master_resume", ""),
+            master_resume=parsed.get("master_resume", "").strip() or default_resume,
             email_text=parsed.get("email_text", ""),
             goals_preferences=parsed.get("goals_preferences", ""),
         )
         return
 
-    # Fallback mode: treat payload as email-only request.
+    # Fallback mode:
+    # 1) try keyword match against unread job emails
+    # 2) otherwise treat payload as raw email/job text
+    matched_email = _select_job_email_from_keywords(payload)
+    email_text = payload
+    if matched_email:
+        subject = matched_email.get("subject", "No Subject")
+        sender = matched_email.get("from", "unknown")
+        await message.reply_text(f"Matched unread job email: {subject} (from {sender}).")
+        email_text = email_to_jobmatch_text(matched_email)
+
     await _run_jobmatch_and_reply(
         message,
-        master_resume="",
-        email_text=payload,
+        master_resume=default_resume,
+        email_text=email_text,
         goals_preferences="",
     )
 
@@ -423,7 +489,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if parsed:
         await _run_jobmatch_and_reply(
             update.message,
-            master_resume=parsed.get("master_resume", ""),
+            master_resume=parsed.get("master_resume", "").strip() or load_default_profile_text(),
             email_text=parsed.get("email_text", ""),
             goals_preferences=parsed.get("goals_preferences", ""),
         )
@@ -441,7 +507,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if looks_like_jobmatch_request(text) and len(text) > 300:
         await _run_jobmatch_and_reply(
             update.message,
-            master_resume="",
+            master_resume=load_default_profile_text(),
             email_text=text,
             goals_preferences="",
         )

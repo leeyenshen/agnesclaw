@@ -1,0 +1,60 @@
+LEE YEN SHEN
+HP: 91068206 Email: leeyenshen@gmail.com
+EDUCATION
+National University of Singapore Bachelor of Computing in Computer Science
+• Bachelor of Computer Science (Hons), Major in Computer Science
+• Expected Date of Graduation: May 2027
+Hwa Chong Institution A Levels
+• RP: 90.00/90.00
+• Achieved A's in Biology, Mathematics, Chemistry and Economics
+EXPERIENCE
+Aug 2023 - Present
+Jan 2019 - Dec 2020
+AI Intern, Monarch Tractor May 2025 - Aug 2025
+• Developed and optimised deep learning models for feed categorisation, implementing
+decoder logit normalisation that reduced categorisation loss by 3%.
+• Designed interpretable neural network variants and benchmarked activation, regularisation,
+and embedding strategies to improve model generalisation and explainability.
+• Integrated transformer architectures into convolutional pipelines; refined attention
+computation and positional encoding for improved sequence modelling performance.
+• Enhanced data labelling workflows and documentation templates, improving traceability and
+accuracy of internal ML datasets.
+• Strengthened professional communication and project management skills through structured
+daily logging, mentor reviews, and presentation of experimental findings to technical and
+non-technical audiences.
+Intern, Bridges Integrity Services, Singapore May 2024 - Jun 2024
+• Worked with technology engineers to troubleshoot technical issues and support deployment
+of IT solutions across network infrastructure, workflow, and data-related systems.
+• Configured, managed, and maintained application software and third-party environments,
+strengthening practical understanding of system integration and operational reliability.
+• Gained exposure to business operations and client-facing problem solving in a Singapore
+SME environment, developing adaptability and cross-functional communication skills.
+PROJECTS
+Wunderfund ML Competition
+• Applied machine learning techniques to a real-world prediction problem, using data analysis,
+feature engineering, and model optimisation to improve performance.
+• Tested and compared multiple modelling approaches, using evaluation metrics and validation
+results to guide iterative experimentation.
+• Extracted insights from data and model behaviour to improve decision-making, prediction
+quality, and overall solution effectiveness.
+Orbital Gemini 2024
+• Created and produced a React Native application for iOS and Android using React Native
+Expo.
+• Learned crucial backend and frontend development skills for mobile applications.
+• Collaborated effectively with other software engineers, following proper workflow
+methodologies and documentation practices.
+AWARDS AND SCHOLARSHIP
+National University of Singapore
+• Merit Scholarship
+• The Covid-19 Resilience Medal
+• National Youth Achievement Award Bronze
+• Basic Cardiac Life Support and AED Certification
+• Ong Teng Cheong Leadership Award
+ACADEMIC COURSES
+• Computer Science Online Courses (CS50)
+SKILLS
+• Proficient in Python, Java, React Native programming languages
+• Basic levels of C languages
+• MATLAB experience
+• Microsoft Office Suite (Word, PowerPoint, and Excel)
+• English (Native), Chinese (Native), Hokkien (Basic)
