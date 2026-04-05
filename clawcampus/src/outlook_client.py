@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -55,7 +56,23 @@ def get_inbox(top: int = 10) -> list[dict]:
 def get_unread_emails() -> list[dict]:
     """Return only unread emails."""
     emails = get_inbox()
-    return [e for e in emails if not e.get("isRead", True)]
+    unread = [e for e in emails if not e.get("isRead", True)]
+    unread.sort(key=_email_datetime, reverse=True)
+    return unread
+
+
+def _email_datetime(email: dict) -> datetime:
+    """Best-effort parse for sorting newest-first."""
+    raw = email.get("date") or email.get("receivedDateTime")
+    if not isinstance(raw, str) or not raw.strip():
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
 def get_calendar_events() -> list[dict]:

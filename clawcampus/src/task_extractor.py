@@ -6,11 +6,11 @@ Falls back to rule-based extraction if Agnes API is unavailable.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 from agnes_client import call_agnes_pro, extract_json
 from canvas_client import get_todo_items, get_upcoming_events
 from outlook_client import get_unread_emails
+from time_utils import now_local, parse_iso_datetime
 
 EXTRACTION_PROMPT = """You are a student task extraction agent. Given the following text from a student's email or assignment page, extract ALL actionable items.
 
@@ -36,7 +36,7 @@ Respond ONLY with a JSON array. No markdown, no explanation."""
 
 def extract_from_text(text: str, source: str = "manual") -> list[dict]:
     """Extract tasks from arbitrary text using Agnes-1.5-Pro."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = now_local().strftime("%Y-%m-%d")
     prompt = EXTRACTION_PROMPT.format(today=today)
 
     try:
@@ -49,7 +49,7 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
             # Ensure source field is set
             for task in tasks:
                 task.setdefault("source", source)
-                task["extracted_at"] = datetime.now(timezone.utc).isoformat()
+                task["extracted_at"] = now_local().isoformat()
             return tasks
     except Exception as e:
         print(f"[task_extractor] Agnes call failed: {e}")
@@ -63,7 +63,7 @@ def extract_from_text(text: str, source: str = "manual") -> list[dict]:
         "urgency": "info",
         "source": source,
         "raw_snippet": text[:100],
-        "extracted_at": datetime.now(timezone.utc).isoformat(),
+        "extracted_at": now_local().isoformat(),
     }]
 
 
@@ -87,7 +87,7 @@ def extract_from_canvas_todo(item: dict) -> dict:
         "urgency": urgency,
         "source": "canvas",
         "raw_snippet": f"{assignment.get('name', '')} — {item.get('context_name', '')}",
-        "extracted_at": datetime.now(timezone.utc).isoformat(),
+        "extracted_at": now_local().isoformat(),
         "canvas_url": assignment.get("html_url"),
     }
 
@@ -105,7 +105,7 @@ def extract_from_canvas_event(event: dict) -> dict:
         "urgency": urgency,
         "source": "canvas",
         "raw_snippet": f"{event.get('title', '')} @ {event.get('location_name', 'TBA')}",
-        "extracted_at": datetime.now(timezone.utc).isoformat(),
+        "extracted_at": now_local().isoformat(),
         "location": event.get("location_name"),
     }
 
@@ -114,20 +114,18 @@ def _classify_urgency(date_str: str | None) -> str:
     """Classify urgency based on how far away a date is."""
     if not date_str:
         return "info"
-    try:
-        due = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        delta = (due - now).total_seconds() / 3600  # hours
-        if delta < 0:
-            return "urgent"  # overdue
-        elif delta < 48:
-            return "urgent"
-        elif delta < 168:  # 7 days
-            return "soon"
-        else:
-            return "later"
-    except (ValueError, TypeError):
+    due = parse_iso_datetime(date_str)
+    if not due:
         return "info"
+    now = now_local()
+    delta = (due.astimezone(now.tzinfo) - now).total_seconds() / 3600  # hours
+    if delta < 0:
+        return "urgent"  # overdue
+    if delta < 48:
+        return "urgent"
+    if delta < 168:  # 7 days
+        return "soon"
+    return "later"
 
 
 def extract_all_sources() -> list[dict]:

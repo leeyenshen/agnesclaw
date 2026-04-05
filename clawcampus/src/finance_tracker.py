@@ -4,9 +4,10 @@ Finance tracker — parses transaction emails and tracks spending.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 
 from memory_manager import add_transaction, get_transactions
+from time_utils import now_local
 
 
 def parse_transaction_text(text: str) -> dict | None:
@@ -48,7 +49,7 @@ def parse_transaction_text(text: str) -> dict | None:
         r"(\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})",
         text,
     )
-    date_str = date_match.group(1) if date_match else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    date_str = date_match.group(1) if date_match else now_local().strftime("%Y-%m-%d")
 
     # Categorize
     category = _categorize(text, merchant)
@@ -58,7 +59,7 @@ def parse_transaction_text(text: str) -> dict | None:
         "amount": amount,
         "date": date_str,
         "category": category,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": now_local().isoformat(),
     }
 
 
@@ -82,26 +83,98 @@ def parse_transaction_email(email: dict) -> dict | None:
     return parse_transaction_text(text)
 
 
+def _parse_flexible_date(value: str | None) -> datetime | None:
+    if not value or not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    # ISO-like formats, including timezone offsets.
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=now_local().tzinfo)
+        return dt.astimezone(now_local().tzinfo)
+    except ValueError:
+        pass
+
+    # Common human-friendly date formats from receipts/emails.
+    for fmt in [
+        "%Y-%m-%d",
+        "%d %B %Y",
+        "%d %b %Y",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%m/%d/%Y",
+        "%m/%d/%y",
+    ]:
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=now_local().tzinfo)
+        except ValueError:
+            continue
+
+    return None
+
+
+def _transaction_datetime(tx: dict) -> datetime | None:
+    date_dt = _parse_flexible_date(tx.get("date"))
+    if date_dt:
+        return date_dt
+    return _parse_flexible_date(tx.get("recorded_at"))
+
+
+def get_weekly_transactions(
+    transactions: list[dict],
+    *,
+    now: datetime | None = None,
+    days: int = 7,
+) -> list[dict]:
+    """
+    Return transactions in the recent rolling window.
+    Defaults to last 7 days in local timezone.
+    """
+    now_dt = now or now_local()
+    cutoff = now_dt - timedelta(days=days)
+    weekly = []
+    for tx in transactions:
+        tx_dt = _transaction_datetime(tx)
+        if not tx_dt:
+            continue
+        if tx_dt >= cutoff:
+            weekly.append(tx)
+    return weekly
+
+
 def get_spending_summary() -> str:
     """Generate a spending summary from memory."""
     transactions = get_transactions()
     if not transactions:
         return "\U0001f4b0 No spending recorded yet.\nForward me receipts or transaction emails to track spending!"
 
-    total = sum(t.get("amount", 0) for t in transactions)
+    weekly_transactions = get_weekly_transactions(transactions)
+    total = sum(t.get("amount", 0) for t in weekly_transactions)
 
     # Group by category
     by_category: dict[str, float] = {}
-    for t in transactions:
+    for t in weekly_transactions:
         cat = t.get("category", "other")
         by_category[cat] = by_category.get(cat, 0) + t.get("amount", 0)
 
     lines = [
-        f"\U0001f4ca Spending Summary\n",
-        f"Total: ${total:.2f}",
-        f"Transactions: {len(transactions)}\n",
-        "By category:",
+        f"\U0001f4ca Spending Summary (Last 7 Days)\n",
+        f"Total (7d): ${total:.2f}",
+        f"Transactions (7d): {len(weekly_transactions)}",
     ]
+
+    older_count = len(transactions) - len(weekly_transactions)
+    if older_count > 0:
+        lines.append(f"Older records ignored: {older_count}\n")
+    else:
+        lines.append("")
+
+    lines.append("By category:")
 
     category_emoji = {
         "food": "\U0001f354",
@@ -111,9 +184,12 @@ def get_spending_summary() -> str:
         "other": "\U0001f4e6",
     }
 
-    for cat, amt in sorted(by_category.items(), key=lambda x: -x[1]):
-        emoji = category_emoji.get(cat, "\U0001f4e6")
-        lines.append(f"  {emoji} {cat.title()}: ${amt:.2f}")
+    if by_category:
+        for cat, amt in sorted(by_category.items(), key=lambda x: -x[1]):
+            emoji = category_emoji.get(cat, "\U0001f4e6")
+            lines.append(f"  {emoji} {cat.title()}: ${amt:.2f}")
+    else:
+        lines.append("  No spending in the last 7 days.")
 
     # Budget check
     weekly_budget = 70.0  # Default budget

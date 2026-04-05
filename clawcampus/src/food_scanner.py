@@ -5,10 +5,10 @@ Reads from mock_data/food_deals.json and memory.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 from memory_manager import add_food_deals, get_food_deals
+from time_utils import now_local
 
 MOCK_DIR = Path(__file__).parent.parent / "mock_data"
 
@@ -22,7 +22,7 @@ def load_all_deals() -> list[dict]:
 
 def get_todays_deals() -> list[dict]:
     """Filter deals valid today."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = now_local().strftime("%Y-%m-%d")
     all_deals = load_all_deals()
     return [d for d in all_deals if d.get("valid_date", "") == today]
 
