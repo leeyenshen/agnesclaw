@@ -6,10 +6,10 @@
 - **Auth**: Bearer token via `CANVAS_TOKEN`
 - **Mock fallback**: `mock_data/canvas_todo.json`, `mock_data/canvas_events.json`
 
-## Outlook Email (via Maton Gateway)
-- **Source**: `src/outlook_client.py`
-- **Endpoints**: Inbox messages, calendar events, send mail
-- **Auth**: Bearer token via `MATON_API_KEY`
+## Gmail Email (via Google Gmail API)
+- **Source**: `src/gmail_client.py`
+- **Endpoints**: Inbox messages
+- **Auth**: OAuth 2.0 via `credentials.json` and `token.json`
 - **Mock fallback**: `mock_data/emails.json`
 
 ## Agnes-1.5-Pro (via ZenMux)

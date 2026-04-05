@@ -293,10 +293,17 @@ def load_default_profile_text() -> str:
 
     preferred_path = os.environ.get("MASTER_RESUME_FILE", "").strip()
     if preferred_path:
-        try:
-            return Path(preferred_path).read_text(encoding="utf-8").strip()
-        except Exception:
-            pass
+        project_root = DEFAULT_PROFILE_PATH.parent
+        candidates = [Path(preferred_path)]
+        preferred = Path(preferred_path)
+        if not preferred.is_absolute():
+            candidates.append(project_root / preferred)
+
+        for candidate in candidates:
+            try:
+                return candidate.read_text(encoding="utf-8").strip()
+            except Exception:
+                continue
 
     try:
         return DEFAULT_PROFILE_PATH.read_text(encoding="utf-8").strip()

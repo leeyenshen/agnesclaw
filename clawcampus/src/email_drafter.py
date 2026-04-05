@@ -4,7 +4,7 @@ Identifies emails needing replies and drafts contextual responses.
 """
 
 from agnes_client import call_agnes_pro
-from outlook_client import get_unread_emails, send_email
+from gmail_client import get_service, fetch_unread_emails
 
 DRAFT_PROMPT = """You are a polite NUS student drafting an email reply. The tone should be:
 - Professional but not stiff
@@ -24,7 +24,7 @@ End with "Best regards," followed by a newline and "[Your Name]"."""
 def draft_reply(email: dict) -> str:
     """Draft a reply to a specific email using Agnes."""
     email_text = (
-        f"From: {email.get('from', 'unknown')}\n"
+        f"From: {email.get('sender', 'unknown')}\n"
         f"Subject: {email.get('subject', 'No Subject')}\n"
         f"Date: {email.get('date', '')}\n\n"
         f"{email.get('body', '')}"
@@ -42,7 +42,7 @@ def draft_reply(email: dict) -> str:
 
 def _fallback_draft(email: dict) -> str:
     """Simple rule-based fallback if Agnes is unavailable."""
-    sender = email.get("from", "")
+    sender = email.get("sender", "")
     subject = email.get("subject", "")
 
     # Determine greeting
@@ -78,7 +78,8 @@ def _fallback_draft(email: dict) -> str:
 
 def draft_reply_for_latest() -> str:
     """Find the most recent unread email and draft a reply."""
-    unread = get_unread_emails()
+    service = get_service()
+    unread = fetch_unread_emails(service, max_results=10)
     if not unread:
         return "No unread emails to reply to!"
 
@@ -87,7 +88,7 @@ def draft_reply_for_latest() -> str:
 
     return (
         f"Replying to: {email.get('subject', 'No Subject')}\n"
-        f"From: {email.get('from', 'unknown')}\n"
+        f"From: {email.get('sender', 'unknown')}\n"
         f"{'=' * 40}\n\n"
         f"{draft}\n\n"
         f"{'=' * 40}\n"
@@ -97,14 +98,21 @@ def draft_reply_for_latest() -> str:
 
 def send_draft(email: dict, draft_body: str) -> dict:
     """Send an approved draft reply."""
-    to = email.get("from", "")
+    to = email.get("sender", "")
     subject = f"Re: {email.get('subject', '')}"
-    return send_email(to, subject, draft_body, draft_only=True)
+    return {
+        "status": "draft_saved",
+        "to": to,
+        "subject": subject,
+        "body_preview": draft_body[:100],
+        "note": "Draft mode only. Gmail integration is read-only.",
+    }
 
 
 if __name__ == "__main__":
     print("=== Email Drafter Test ===\n")
-    emails = get_unread_emails()
+    service = get_service()
+    emails = fetch_unread_emails(service, max_results=10)
     for email in emails:
         print(f"--- Drafting reply to: {email['subject']} ---")
         draft = draft_reply(email)
